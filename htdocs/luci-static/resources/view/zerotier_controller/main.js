@@ -2,14 +2,6 @@
 
 /* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ / ImmortalWrt */
 
-function addNotify(msg, type) {
-	if (window.L && L.ui && typeof L.ui.addNotification === 'function') {
-		L.ui.addNotification(null, E('p', {}, [ msg ]), type || 'info');
-	} else {
-		alert(msg);
-	}
-}
-
 var callStatus = L.rpc.declare({
 	object: 'zerotier-controller',
 	method: 'status'
@@ -93,14 +85,17 @@ return L.view.extend({
 
 	load: function() {
 		return Promise.all([
+			L.require('ui'),
 			callStatus(),
 			callListNetworks()
 		]);
 	},
 
 	render: function(data) {
-		var status = data[0] || {};
-		var networksData = data[1] || {};
+		var ui = data[0];
+		var status = data[1] || {};
+		var networksData = data[2] || {};
+		
 		var networks = [];
 		if (Array.isArray(networksData)) {
 			networks = networksData;
@@ -152,7 +147,7 @@ return L.view.extend({
 											'style': 'width: 100%; text-align: left; font-family: monospace;',
 											'click': function(ev) {
 												ev.preventDefault();
-												self.loadNetworkDetails(nwid);
+												self.loadNetworkDetails(nwid, ui);
 											}
 										}, [ nwid ])
 									]);
@@ -173,7 +168,9 @@ return L.view.extend({
 									ev.preventDefault();
 									var name = document.getElementById('new-net-name').value || 'new_network';
 									return callCreateNetwork(name).then(function(res) {
-										addNotify(_('Created network: ') + (res.nwid || res.id), 'info');
+										if (ui && ui.addNotification) {
+											ui.addNotification(null, E('p', {}, [ _('Created network: ') + (res.nwid || res.id) ]), 'info');
+										}
 										location.reload();
 									});
 								}
@@ -193,13 +190,17 @@ return L.view.extend({
 									ev.preventDefault();
 									var fileInput = document.getElementById('backup-file-input');
 									if (!fileInput.files || !fileInput.files[0]) {
-										addNotify(_('Please select a JSON backup file.'), 'error');
+										if (ui && ui.addNotification) {
+											ui.addNotification(null, E('p', {}, [ _('Please select a JSON backup file.') ]), 'error');
+										}
 										return;
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
 										callImportBackup(e.target.result).then(function(res) {
-											addNotify(_('Network backup restored successfully.'), 'info');
+											if (ui && ui.addNotification) {
+												ui.addNotification(null, E('p', {}, [ _('Network backup restored successfully.') ]), 'info');
+											}
 											location.reload();
 										});
 									};
@@ -222,15 +223,16 @@ return L.view.extend({
 		// Automatically load details of first network if available
 		if (activeNwid) {
 			setTimeout(function() {
-				this.loadNetworkDetails(activeNwid);
+				this.loadNetworkDetails(activeNwid, ui);
 			}.bind(this), 100);
 		}
 
 		return viewContainer;
 	},
 
-	loadNetworkDetails: function(nwid) {
+	loadNetworkDetails: function(nwid, ui) {
 		var panel = document.getElementById('main-network-panel');
+		if (!panel) return;
 		panel.innerHTML = '';
 		panel.appendChild(E('p', {}, [ _('Loading network details for ') + nwid + '...' ]));
 
@@ -261,14 +263,14 @@ return L.view.extend({
 			}
 
 			panel.innerHTML = '';
-			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerLastSeen, peerLatency));
+			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerLastSeen, peerLatency, ui));
 			
 			// Apply default filter: Online Only
 			this.filterMembersTable();
 		}.bind(this));
 	},
 
-	renderDashboardContent: function(nwid, netInfo, members, peerLastSeen, peerLatency) {
+	renderDashboardContent: function(nwid, netInfo, members, peerLastSeen, peerLatency, ui) {
 		var self = this;
 		return E('div', {}, [
 			// Network Overview & Backup Actions
@@ -307,7 +309,7 @@ return L.view.extend({
 							'style': 'margin-right: 8px;',
 							'click': function(ev) {
 								ev.preventDefault();
-								self.loadNetworkDetails(nwid);
+								self.loadNetworkDetails(nwid, ui);
 							}
 						}, [ _('Refresh') ]),
 						E('a', { 'href': '#add-member-section', 'class': 'btn cbi-button-action' }, [ _('Add Member Manually') ])
@@ -393,7 +395,7 @@ return L.view.extend({
 											'click': function(ev) {
 												ev.preventDefault();
 												callAuthorizeMember(nwid, m.id, !m.authorized).then(function() {
-													self.loadNetworkDetails(nwid);
+													self.loadNetworkDetails(nwid, ui);
 												});
 											}
 										}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
@@ -404,7 +406,7 @@ return L.view.extend({
 												ev.preventDefault();
 												if (confirm(_('Delete member ') + m.id + '?')) {
 													callDeleteMember(nwid, m.id).then(function() {
-														self.loadNetworkDetails(nwid);
+														self.loadNetworkDetails(nwid, ui);
 													});
 												}
 											}
@@ -436,12 +438,14 @@ return L.view.extend({
 							var nodeid = document.getElementById('add-nodeid').value;
 							var name = document.getElementById('add-name').value;
 							if (!nodeid || nodeid.length !== 10) {
-								addNotify(_('Node ID must be 10 characters.'), 'error');
+								if (ui && ui.addNotification) {
+									ui.addNotification(null, E('p', {}, [ _('Node ID must be 10 characters.') ]), 'error');
+								}
 								return;
 							}
 							callAuthorizeMember(nwid, nodeid, true).then(function() {
 								if (name) callRenameMember(nwid, nodeid, name);
-								self.loadNetworkDetails(nwid);
+								self.loadNetworkDetails(nwid, ui);
 							});
 						}
 					}, [ _('Add & Authorize') ])
@@ -470,7 +474,7 @@ return L.view.extend({
 										'click': function(ev) {
 											ev.preventDefault();
 											callDelRoute(nwid, r.target).then(function() {
-												self.loadNetworkDetails(nwid);
+												self.loadNetworkDetails(nwid, ui);
 											});
 										}
 									}, [ _('Delete Route') ])
@@ -496,7 +500,7 @@ return L.view.extend({
 							var via = document.getElementById('route-via').value;
 							if (!target) return;
 							callAddRoute(nwid, target, via).then(function() {
-								self.loadNetworkDetails(nwid);
+								self.loadNetworkDetails(nwid, ui);
 							});
 						}
 					}, [ _('Add Route') ])
