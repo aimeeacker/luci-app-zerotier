@@ -101,18 +101,13 @@ jobs:
       - name: Configure packages
         working-directory: sdk
         run: |
-          # SDK defaults enable every kernel module and every non-shared package.
-          # Remove those expanded selections before enabling only our two targets.
-          sed -i \
-            -e '/^CONFIG_PACKAGE_/d' \
-            -e '/^CONFIG_ALL_KMODS=/d' \
-            -e '/^CONFIG_ALL_NONSHARED=/d' \
-            .config
+          # Start from a minimal config. SDK defaults otherwise enable every
+          # kernel module and every non-shared package.
           printf '%s\n' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
-            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
+            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config
           make defconfig
 
           if grep -qE '^CONFIG_ALL_(KMODS|NONSHARED)=y$' .config; then
