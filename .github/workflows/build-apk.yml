@@ -249,7 +249,11 @@ jobs:
             "ZeroTier package release override: r100" \
             "Packages: zerotier, luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
 
-          sha256sum output/* > output/SHA256SUMS
+          (
+            cd output
+            sha256sum BUILD-INFO.txt ZEROTIER-CONTROLLER-LICENSE.md *.apk > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
           ls -lh output
 
       - name: Upload packages
