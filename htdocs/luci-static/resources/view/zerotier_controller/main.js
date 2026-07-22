@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require rpc';
-'require ui';
 
 /* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ / ImmortalWrt */
 
@@ -146,9 +145,10 @@ return view.extend({
 										E('button', {
 											'class': 'btn cbi-button-action',
 											'style': 'width: 100%; text-align: left; font-family: monospace;',
-											'click': ui.createHandlerFn(this, function() {
+											'click': function(ev) {
+												ev.preventDefault();
 												self.loadNetworkDetails(nwid);
-											})
+											}
 										}, [ nwid ])
 									]);
 								}.bind(this))
@@ -164,13 +164,14 @@ return view.extend({
 							E('button', {
 								'class': 'btn cbi-button-save',
 								'style': 'width: 100%;',
-								'click': ui.createHandlerFn(this, function() {
+								'click': function(ev) {
+									ev.preventDefault();
 									var name = document.getElementById('new-net-name').value || 'new_network';
 									return callCreateNetwork(name).then(function(res) {
-										ui.addNotification(null, E('p', {}, [ _('Created network: ') + (res.nwid || res.id) ]), 'info');
+										alert(_('Created network: ') + (res.nwid || res.id));
 										window.location.reload();
 									});
-								})
+								}
 							}, [ _('Create New Network') ])
 						])
 					]),
@@ -183,21 +184,22 @@ return view.extend({
 							E('button', {
 								'class': 'btn cbi-button-action',
 								'style': 'width: 100%;',
-								'click': ui.createHandlerFn(this, function() {
+								'click': function(ev) {
+									ev.preventDefault();
 									var fileInput = document.getElementById('backup-file-input');
 									if (!fileInput.files || !fileInput.files[0]) {
-										ui.addNotification(null, E('p', {}, [ _('Please select a JSON backup file.') ]), 'error');
+										alert(_('Please select a JSON backup file.'));
 										return;
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
 										callImportBackup(e.target.result).then(function(res) {
-											ui.addNotification(null, E('p', {}, [ _('Network backup restored successfully.') ]), 'info');
+											alert(_('Network backup restored successfully.'));
 											window.location.reload();
 										});
 									};
 									reader.readAsText(fileInput.files[0]);
-								})
+								}
 							}, [ _('Import Backup') ])
 						])
 					])
@@ -277,7 +279,8 @@ return view.extend({
 				E('div', {}, [
 					E('button', {
 						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, function() {
+						'click': function(ev) {
+							ev.preventDefault();
 							return callExportBackup(nwid).then(function(backupData) {
 								var blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
 								var a = document.createElement('a');
@@ -285,7 +288,7 @@ return view.extend({
 								a.download = 'zt-backup-' + nwid + '.json';
 								a.click();
 							});
-						})
+						}
 					}, [ _('Export Backup (JSON)') ])
 				])
 			]),
@@ -298,9 +301,10 @@ return view.extend({
 						E('button', {
 							'class': 'btn cbi-button-neutral',
 							'style': 'margin-right: 8px;',
-							'click': ui.createHandlerFn(this, function() {
+							'click': function(ev) {
+								ev.preventDefault();
 								self.loadNetworkDetails(nwid);
-							})
+							}
 						}, [ _('Refresh') ]),
 						E('a', { 'href': '#add-member-section', 'class': 'btn cbi-button-action' }, [ _('Add Member Manually') ])
 					])
@@ -382,22 +386,24 @@ return view.extend({
 										E('button', {
 											'class': m.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
 											'style': 'margin-right: 4px;',
-											'click': ui.createHandlerFn(this, function() {
+											'click': function(ev) {
+												ev.preventDefault();
 												return callAuthorizeMember(nwid, m.id, !m.authorized).then(function() {
 													self.loadNetworkDetails(nwid);
 												});
-											})
+											}
 										}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
 										E('button', {
 											'class': 'btn cbi-button-remove',
 											'disabled': isController ? 'disabled' : null,
-											'click': ui.createHandlerFn(this, function() {
+											'click': function(ev) {
+												ev.preventDefault();
 												if (confirm(_('Delete member ') + m.id + '?')) {
 													return callDeleteMember(nwid, m.id).then(function() {
 														self.loadNetworkDetails(nwid);
 													});
 												}
-											})
+											}
 										}, [ _('Delete') ])
 									])
 								]);
@@ -421,18 +427,19 @@ return view.extend({
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
-						'click': ui.createHandlerFn(this, function() {
+						'click': function(ev) {
+							ev.preventDefault();
 							var nodeid = document.getElementById('add-nodeid').value;
 							var name = document.getElementById('add-name').value;
 							if (!nodeid || nodeid.length !== 10) {
-								ui.addNotification(null, E('p', {}, [ _('Node ID must be 10 characters.') ]), 'error');
+								alert(_('Node ID must be 10 characters.'));
 								return;
 							}
 							return callAuthorizeMember(nwid, nodeid, true).then(function() {
 								if (name) callRenameMember(nwid, nodeid, name);
 								self.loadNetworkDetails(nwid);
 							});
-						})
+						}
 					}, [ _('Add & Authorize') ])
 				])
 			]),
@@ -456,11 +463,12 @@ return view.extend({
 								E('td', {}, [
 									E('button', {
 										'class': 'btn cbi-button-remove',
-										'click': ui.createHandlerFn(this, function() {
+										'click': function(ev) {
+											ev.preventDefault();
 											return callDelRoute(nwid, r.target).then(function() {
 												self.loadNetworkDetails(nwid);
 											});
-										})
+										}
 									}, [ _('Delete Route') ])
 								])
 							]);
@@ -478,14 +486,15 @@ return view.extend({
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
-						'click': ui.createHandlerFn(this, function() {
+						'click': function(ev) {
+							ev.preventDefault();
 							var target = document.getElementById('route-target').value;
 							var via = document.getElementById('route-via').value;
 							if (!target) return;
 							return callAddRoute(nwid, target, via).then(function() {
 								self.loadNetworkDetails(nwid);
 							});
-						})
+						}
 					}, [ _('Add Route') ])
 				])
 			])
