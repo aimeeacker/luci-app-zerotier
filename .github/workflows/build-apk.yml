@@ -1,4 +1,4 @@
-name: Build ImmortalWrt Controller Packages
+name: Build ImmortalWrt ZeroTier Packages
 
 on:
   push:
@@ -73,7 +73,7 @@ jobs:
       - name: Install feeds and enable embedded Controller
         working-directory: sdk
         run: |
-          ./scripts/feeds update packages
+          ./scripts/feeds update packages luci
           ./scripts/feeds install -p packages zerotier
 
           zerotier_makefile="feeds/packages/net/zerotier/Makefile"
@@ -103,12 +103,19 @@ jobs:
 
       - name: Add LuCI package to SDK
         run: |
-          mkdir -p sdk/package/luci-app-zerotier-controller
+          # The SDK may expose ImmortalWrt's stock package through a feed
+          # symlink. Remove only that link so this unified source wins.
+          if [ -L sdk/package/feeds/luci/luci-app-zerotier ]; then
+            rm sdk/package/feeds/luci/luci-app-zerotier
+          fi
+
+          mkdir -p sdk/package/luci-app-zerotier
           rsync -a \
             --exclude='.git' \
+            --exclude='.github' \
             --exclude='sdk' \
             --exclude='output' \
-            ./ sdk/package/luci-app-zerotier-controller/
+            ./ sdk/package/luci-app-zerotier/
 
       - name: Configure packages
         working-directory: sdk
@@ -132,7 +139,8 @@ jobs:
             '# CONFIG_ALL_NONSHARED is not set' \
             '# CONFIG_AUTOREMOVE is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
-            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config
+            'CONFIG_PACKAGE_luci-app-zerotier=m' \
+            'CONFIG_PACKAGE_luci-i18n-zerotier-zh-cn=m' > .config
           make defconfig
           echo "Bulk selectors:"
           grep -E '^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?' .config
@@ -147,7 +155,7 @@ jobs:
             exit 1
           fi
 
-          for package in zerotier luci-app-zerotier-controller; do
+          for package in zerotier luci-app-zerotier luci-i18n-zerotier-zh-cn; do
             if ! grep -q "^CONFIG_PACKAGE_${package}=m$" .config; then
               echo "Expected CONFIG_PACKAGE_${package}=m" >&2
               exit 1
@@ -178,29 +186,35 @@ jobs:
           make package/feeds/packages/zerotier/clean
           make package/feeds/packages/zerotier/compile V=s -j"$(nproc)"
 
-      - name: Build LuCI controller package
+      - name: Build unified LuCI package and Simplified Chinese translation
         working-directory: sdk
         run: |
-          make package/luci-app-zerotier-controller/clean
-          make package/luci-app-zerotier-controller/compile V=s -j"$(nproc)"
+          make package/luci-app-zerotier/clean
+          make package/luci-app-zerotier/compile V=s -j"$(nproc)"
+          make package/luci-i18n-zerotier-zh-cn/compile V=s -j"$(nproc)"
 
       - name: Collect and verify artifacts
         run: |
           mkdir -p output
-          artifact_count=0
-          while IFS= read -r -d '' package_file; do
-            cp "$package_file" output/
-            artifact_count=$((artifact_count + 1))
-          done < <(find sdk/bin/packages -type f \( \
-            -name 'zerotier-[0-9]*.apk' -o \
-            -name 'zerotier_*.ipk' -o \
-            -name 'luci-app-zerotier-controller-*.apk' -o \
-            -name 'luci-app-zerotier-controller_*.ipk' \
-          \) -print0)
 
-          if [ "$artifact_count" -lt 2 ]; then
-            echo "Expected both ZeroTier and LuCI packages, found $artifact_count" >&2
-            find sdk/bin -type f \( -name '*.apk' -o -name '*.ipk' \) -print
+          collect_one() {
+            pattern="$1"
+            label="$2"
+            mapfile -d '' matches < <(find sdk/bin/packages -type f -name "$pattern" -print0)
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "Expected exactly one $label APK, found ${#matches[@]}" >&2
+              find sdk/bin/packages -type f -name '*.apk' -print >&2
+              exit 1
+            fi
+            cp "${matches[0]}" output/
+          }
+
+          collect_one 'zerotier-[0-9]*.apk' 'ZeroTier'
+          collect_one 'luci-app-zerotier-[0-9]*.apk' 'LuCI application'
+          collect_one 'luci-i18n-zerotier-zh-cn-[0-9]*.apk' 'Simplified Chinese translation'
+
+          if find output -maxdepth 1 -type f -name '*controller*.apk' | grep -q .; then
+            echo "A legacy standalone Controller package was unexpectedly produced" >&2
             exit 1
           fi
 
@@ -216,7 +230,8 @@ jobs:
             "SDK source: $SDK_BASE_URL" \
             "Target: ImmortalWrt 25.12 x86/64" \
             "ZeroTier Controller: ZT_NONFREE=1" \
-            "ZeroTier package release override: r100" > output/BUILD-INFO.txt
+            "ZeroTier package release override: r100" \
+            "Packages: zerotier, luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
 
           sha256sum output/* > output/SHA256SUMS
           ls -lh output
@@ -224,7 +239,7 @@ jobs:
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-25.12-x86_64-zerotier-controller
+          name: immortalwrt-25.12-x86_64-zerotier
           path: output/*
           if-no-files-found: error
 

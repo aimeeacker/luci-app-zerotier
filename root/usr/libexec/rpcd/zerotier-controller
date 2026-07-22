@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 
 # ZeroTier Controller rpcd plugin for OpenWrt ubus
 
@@ -191,7 +192,7 @@ case "$1" in
 					--arg ip_start "${subnet}.1" \
 					--arg ip_end "${subnet}.254" \
 					--arg route "${subnet}.0/24" \
-					'{ name: $name, private: true, v4AssignMode: "zt", ipAssignmentPools: [{ ipRangeStart: $ip_start, ipRangeEnd: $ip_end }], routes: [{ target: $route, via: null }] }')"
+					'{ name: $name, private: true, v4AssignMode: { zt: true }, ipAssignmentPools: [{ ipRangeStart: $ip_start, ipRangeEnd: $ip_end }], routes: [{ target: $route, via: null }] }')"
 				zt_api POST /controller/network "$payload"
 				;;
 			list_members)

@@ -1,8 +1,10 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
 'use strict';
 'require view';
 'require rpc';
 
-/* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ / ImmortalWrt */
+/* Embedded ZeroTier Controller management view for ImmortalWrt/OpenWrt LuCI */
 
 var callStatus = rpc.declare({
 	object: 'zerotier-controller',
@@ -186,7 +188,7 @@ function dashboardStyles() {
 }
 
 return view.extend({
-	handleSaveAndApply: null,
+	handleSaveApply: null,
 	handleSave: null,
 	handleReset: null,
 

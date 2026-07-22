@@ -1,8 +1,12 @@
 {
-	"luci-app-zerotier-controller": {
-		"description": "Grant access to ZeroTier Controller ubus API",
+	"luci-app-zerotier": {
+		"description": "Grant access to ZeroTier configuration and embedded Controller",
 		"read": {
+			"file": {
+				"/sbin/ifconfig": [ "exec" ]
+			},
 			"ubus": {
+				"service": [ "list" ],
 				"zerotier-controller": [
 					"status",
 					"list_networks",
@@ -11,7 +15,7 @@
 					"export_backup"
 				]
 			},
-			"uci": [ "zerotier_controller" ]
+			"uci": [ "zerotier" ]
 		},
 		"write": {
 			"ubus": {
@@ -26,7 +30,7 @@
 					"import_backup"
 				]
 			},
-			"uci": [ "zerotier_controller" ]
+			"uci": [ "zerotier" ]
 		}
 	}
 }

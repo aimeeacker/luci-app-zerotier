@@ -1,5 +1,0 @@
-config global 'main'
-	option enabled '1'
-	option autostart '1'
-	option persist_path '/etc/zerotier'
-	option default_subnet_prefix '10'
