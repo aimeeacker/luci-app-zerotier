@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-zerotier-controller
-PKG_VERSION:=1.0.8
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Aimee <aimee@github.com>
@@ -20,6 +20,12 @@ endef
 
 define Package/luci-app-zerotier-controller/description
   LuCI Support for ZeroTier Controller using hybrid UCI & ubus architecture.
+endef
+
+define Package/luci-app-zerotier-controller/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || rm -f /tmp/luci-indexcache
+exit 0
 endef
 
 define Build/Configure
@@ -46,6 +52,7 @@ define Package/luci-app-zerotier-controller/install
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/zerotier_controller
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/zerotier_controller/main.js $(1)/www/luci-static/resources/view/zerotier_controller/main.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/zerotier_controller/main.js $(1)/www/luci-static/resources/view/zerotier_controller/main-v1_1_0.js
 endef
 
 $(eval $(call BuildPackage,luci-app-zerotier-controller))

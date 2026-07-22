@@ -1,4 +1,4 @@
-name: Build OpenWrt 25.12 APK & IPK
+name: Build ImmortalWrt Controller Packages
 
 on:
   push:
@@ -7,71 +7,163 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      sdk_base_url:
+        description: ImmortalWrt SDK target directory URL
+        required: true
+        default: https://downloads.immortalwrt.org/snapshots/targets/x86/64
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build OpenWrt 25.12 x86_64 Package (APK & IPK)
+    name: ImmortalWrt 25.12 x86_64
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout Source Code
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Setup Build Environment
+      - name: Select SDK source
+        env:
+          INPUT_SDK_BASE_URL: ${{ github.event.inputs.sdk_base_url }}
+        run: |
+          sdk_base_url="$INPUT_SDK_BASE_URL"
+          if [ -z "$sdk_base_url" ]; then
+            sdk_base_url="https://downloads.immortalwrt.org/snapshots/targets/x86/64"
+          fi
+          echo "SDK_BASE_URL=${sdk_base_url%/}" >> "$GITHUB_ENV"
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 zstd
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib gettext git \
+            libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget \
+            curl zstd
 
-      - name: Download & Extract OpenWrt 25.12 SDK (x86_64)
+      - name: Download and verify ImmortalWrt SDK
         run: |
-          SDK_FILENAME=$(curl -s https://downloads.openwrt.org/snapshots/targets/x86/64/ | grep -o 'openwrt-sdk-x86-64[^"]*\.tar\.zst' | head -n 1)
-          if [ -z "$SDK_FILENAME" ]; then
-            SDK_FILENAME="openwrt-sdk-x86-64_gcc-14.4.0_musl.Linux-x86_64.tar.zst"
+          sdk_index="$(curl -fsSL --retry 3 "$SDK_BASE_URL/")"
+          sdk_filename="$(printf '%s' "$sdk_index" | grep -o 'immortalwrt-sdk-x86-64[^"<]*\.tar\.zst' | sed -n '1p')"
+          if [ -z "$sdk_filename" ]; then
+            echo "No x86_64 ImmortalWrt SDK found at $SDK_BASE_URL" >&2
+            exit 1
           fi
-          SDK_URL="https://downloads.openwrt.org/snapshots/targets/x86/64/${SDK_FILENAME}"
-          echo "Downloading OpenWrt 25.12 SDK: $SDK_URL"
-          wget -q "$SDK_URL" -O sdk.tar.zst
-          tar -I zstd -xf sdk.tar.zst
-          mv openwrt-sdk-* sdk
-          echo "OpenWrt 25.12 SDK Extracted Successfully"
 
-      - name: Copy Package to SDK
+          curl -fL --retry 3 "$SDK_BASE_URL/$sdk_filename" -o sdk.tar.zst
+          expected_sha256="$(curl -fsSL --retry 3 "$SDK_BASE_URL/sha256sums" | awk -v file="$sdk_filename" '$2 == file || $2 == "*" file { print $1 }')"
+          if [ -z "$expected_sha256" ]; then
+            echo "SDK checksum not found for $sdk_filename" >&2
+            exit 1
+          fi
+          echo "$expected_sha256  sdk.tar.zst" | sha256sum -c -
+
+          tar --zstd -xf sdk.tar.zst
+          sdk_dir="$(find . -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
+          if [ -z "$sdk_dir" ]; then
+            echo "Extracted SDK directory not found" >&2
+            exit 1
+          fi
+          mv "$sdk_dir" sdk
+          echo "SDK_FILENAME=$sdk_filename" >> "$GITHUB_ENV"
+
+      - name: Install feeds and enable embedded Controller
+        working-directory: sdk
+        run: |
+          ./scripts/feeds update packages
+          ./scripts/feeds install -p packages zerotier
+
+          zerotier_makefile="feeds/packages/net/zerotier/Makefile"
+          if ! grep -q 'ZT_NONFREE=0' "$zerotier_makefile"; then
+            echo "Expected ZT_NONFREE=0 was not found in $zerotier_makefile" >&2
+            exit 1
+          fi
+
+          sed -i 's/ZT_NONFREE=0/ZT_NONFREE=1/' "$zerotier_makefile"
+          sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=100/' "$zerotier_makefile"
+          sed -i 's/^PKG_LICENSE:=MPL-2.0$/PKG_LICENSE:=MPL-2.0 AND LicenseRef-ZeroTier-Source-Available-1.0/' "$zerotier_makefile"
+          sed -i 's|^PKG_LICENSE_FILES:=.*|PKG_LICENSE_FILES:=LICENSE-MPL.txt nonfree/LICENSE.md|' "$zerotier_makefile"
+
+          grep -E '^(PKG_VERSION|PKG_RELEASE|PKG_LICENSE|PKG_LICENSE_FILES)|ZT_NONFREE=' "$zerotier_makefile"
+
+      - name: Add LuCI package to SDK
         run: |
           mkdir -p sdk/package/luci-app-zerotier-controller
-          rsync -a --exclude='sdk*' --exclude='.git' ./ sdk/package/luci-app-zerotier-controller/
+          rsync -a \
+            --exclude='.git' \
+            --exclude='sdk' \
+            --exclude='output' \
+            ./ sdk/package/luci-app-zerotier-controller/
 
-      - name: Fast Configure Package
+      - name: Configure packages
+        working-directory: sdk
         run: |
-          cd sdk
-          echo "CONFIG_PACKAGE_luci-app-zerotier-controller=m" >> .config
+          printf '%s\n' \
+            'CONFIG_PACKAGE_zerotier=m' \
+            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
           make defconfig
+          grep -E '^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=' .config
 
-      - name: Fast Compile Package
+      - name: Build Controller-enabled ZeroTier
+        working-directory: sdk
         run: |
-          cd sdk
-          # Direct compilation ignoring heavy upstream C++ toolchain dependencies
-          make package/luci-app-zerotier-controller/compile V=s IGNORE_ERRORS=m || true
+          make package/zerotier/clean
+          make package/zerotier/compile V=s -j"$(nproc)"
 
-      - name: Prepare Release Artifacts
+      - name: Build LuCI controller package
+        working-directory: sdk
         run: |
-          mkdir -p output/
-          # Find generated package artifacts
-          find sdk/bin/ -type f \( -name "*.apk" -o -name "*.ipk" \) -exec cp {} output/ \; 2>/dev/null || true
-          
-          # Create a standalone offline installer tarball as backup
-          tar -czvf output/luci-app-zerotier-controller-openwrt25.12-offline.tar.gz root/ htdocs/ README.md
-          
-          echo "Generated Output Files:"
-          ls -la output/
+          make package/luci-app-zerotier-controller/clean
+          make package/luci-app-zerotier-controller/compile V=s -j"$(nproc)"
 
-      - name: Upload Artifacts
+      - name: Collect and verify artifacts
+        run: |
+          mkdir -p output
+          artifact_count=0
+          while IFS= read -r -d '' package_file; do
+            cp "$package_file" output/
+            artifact_count=$((artifact_count + 1))
+          done < <(find sdk/bin/packages -type f \( \
+            -name 'zerotier-[0-9]*.apk' -o \
+            -name 'zerotier_*.ipk' -o \
+            -name 'luci-app-zerotier-controller-*.apk' -o \
+            -name 'luci-app-zerotier-controller_*.ipk' \
+          \) -print0)
+
+          if [ "$artifact_count" -lt 2 ]; then
+            echo "Expected both ZeroTier and LuCI packages, found $artifact_count" >&2
+            find sdk/bin -type f \( -name '*.apk' -o -name '*.ipk' \) -print
+            exit 1
+          fi
+
+          controller_license="$(find sdk/build_dir -type f -path '*/ZeroTierOne-*/nonfree/LICENSE.md' -print -quit)"
+          if [ -z "$controller_license" ]; then
+            echo "ZeroTier Controller license file not found" >&2
+            exit 1
+          fi
+          cp "$controller_license" output/ZEROTIER-CONTROLLER-LICENSE.md
+
+          printf '%s\n' \
+            "SDK: $SDK_FILENAME" \
+            "SDK source: $SDK_BASE_URL" \
+            "Target: ImmortalWrt 25.12 x86/64" \
+            "ZeroTier Controller: ZT_NONFREE=1" \
+            "ZeroTier package release override: r100" > output/BUILD-INFO.txt
+
+          sha256sum output/* > output/SHA256SUMS
+          ls -lh output
+
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-25.12-x86_64-zerotier-controller-packages
+          name: immortalwrt-25.12-x86_64-zerotier-controller
           path: output/*
+          if-no-files-found: error
 
-      - name: Create Release (Tag Triggers Only)
+      - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

@@ -4,7 +4,7 @@
 		"order": 45,
 		"action": {
 			"type": "view",
-			"path": "zerotier_controller/main"
+			"path": "zerotier_controller/main-v1_1_0"
 		},
 		"depends": {
 			"acl": [ "luci-app-zerotier-controller" ]

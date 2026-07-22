@@ -1,8 +1,10 @@
 # luci-app-zerotier-controller
 
-OpenWrt LuCI web interface for managing self-hosted ZeroTier Controller, built with a modern hybrid architecture (UCI for global settings & ubus REST API bridge for dynamic member/network control).
+ImmortalWrt/OpenWrt LuCI web interface for managing a self-hosted ZeroTier Controller through the local ZeroTier service API.
 
-Fully compatible with **OpenWrt 21.02, 23.05, 24.10+** and supports both `opkg` and the new `apk` package managers.
+The bundled GitHub Actions workflow targets **ImmortalWrt 25.12-SNAPSHOT x86/64** and produces both a Controller-enabled ZeroTier package and the LuCI application package.
+
+> ZeroTier 1.16.x distributes its embedded Controller under the ZeroTier Source-Available License. The workflow enables it with `ZT_NONFREE=1`. Review `nonfree/LICENSE.md` before building or using the Controller; commercial use requires a separate license from ZeroTier.
 
 ---
 
@@ -13,7 +15,7 @@ Fully compatible with **OpenWrt 21.02, 23.05, 24.10+** and supports both `opkg` 
   * **Global Settings via UCI** (`/etc/config/zerotier_controller`).
   * **Dynamic Networks & Members via ubus**: Real-time communication with ZeroTier daemon (`127.0.0.1:9993`).
 * **Complete Controller Management**:
-  * **Create Networks**: Auto-assign non-overlapping `10.x.y.0/24` subnets.
+  * **Create Networks**: Auto-assign randomized private `10.x.y.0/24` subnets.
   * **Member Management**: Authorize/deauthorize nodes, change static IP assignments, set node names/notes, and delete nodes.
   * **Default Filter & Sort**: Defaults to showing **Online Only** members with live latency badges and interactive column header sorting.
   * **JSON Backup & Restore**: One-click download of full network backups (including member authorizations and IPs) and one-click JSON restore.
@@ -37,7 +39,7 @@ Fully compatible with **OpenWrt 21.02, 23.05, 24.10+** and supports both `opkg` 
 |            (/usr/libexec/rpcd/zerotier-controller)          |
 +------------------------------+------------------------------+
                                |
-                               | Local HTTP (X-ZT-Direct-Token)
+                               | Local HTTP (X-ZT1-AUTH)
                                v
 +-------------------------------------------------------------+
 |               ZeroTier One Controller Daemon                |
@@ -50,24 +52,52 @@ Fully compatible with **OpenWrt 21.02, 23.05, 24.10+** and supports both `opkg` 
 
 ## 🚀 Installation & Usage
 
-### Method 1: Manual Quick Installation on Router
+### Method 1: GitHub Actions for ImmortalWrt 25.12 x86/64
+
+1. Run the **Build ImmortalWrt Controller Packages** workflow.
+2. Download the `immortalwrt-25.12-x86_64-zerotier-controller` artifact.
+3. Verify the files against `SHA256SUMS`.
+4. Back up `/etc/zerotier`, `/var/lib/zerotier-one`, and `/etc/config/zerotier`.
+5. Install the generated `zerotier` package first, then install `luci-app-zerotier-controller`.
+6. Clear `/tmp/luci-indexcache`, then restart `zerotier`, `rpcd`, and `uhttpd`.
+
+On ImmortalWrt 25.12 with `apk`, run these commands from the extracted artifact directory:
+
+```bash
+apk add --allow-untrusted ./zerotier-*.apk
+apk add --allow-untrusted ./luci-app-zerotier-controller-*.apk
+rm -f /tmp/luci-indexcache
+/etc/init.d/zerotier restart
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+```
+
+Snapshot SDKs are rolling. For safest results, run firmware and packages built from the same ImmortalWrt snapshot. The workflow accepts a custom SDK target-directory URL when manually dispatched.
+
+### Method 2: Manual LuCI Installation on Router
+
+This installs only the LuCI/rpcd application. The installed `zerotier-one` binary must already expose `GET /controller` and `GET /controller/network`.
 
 1. Clone or download this repository.
 2. Copy the contents of `root/` and `htdocs/` into your router's root filesystem `/`:
    ```bash
    cp -r root/* /
    cp -r htdocs/* /
+   cp /www/luci-static/resources/view/zerotier_controller/main.js \
+      /www/luci-static/resources/view/zerotier_controller/main-v1_1_0.js
    ```
 3. Set executable permissions and restart services:
    ```bash
    chmod +x /usr/libexec/rpcd/zerotier-controller
    chmod +x /etc/uci-defaults/99_zerotier_controller
    /etc/uci-defaults/99_zerotier_controller
+   rm -f /tmp/luci-indexcache
    /etc/init.d/rpcd restart
+   /etc/init.d/uhttpd restart
    ```
-4. Access your OpenWrt Web GUI and navigate to **VPN -> ZeroTier Controller** or **Services -> ZeroTier Controller**.
+4. Access your OpenWrt Web GUI and navigate to **Services -> ZeroTier Controller**.
 
-### Method 2: Compile with OpenWrt SDK / Buildroot
+### Method 3: Compile with an SDK / Buildroot
 
 1. Clone this repository into your OpenWrt buildroot package directory:
    ```bash
@@ -83,8 +113,12 @@ Fully compatible with **OpenWrt 21.02, 23.05, 24.10+** and supports both `opkg` 
    make package/luci-app-zerotier-controller/compile V=s
    ```
 
+That command builds only the LuCI/rpcd package. To build the ZeroTier daemon with the embedded Controller, install the `zerotier` feed package, change its build flag from `ZT_NONFREE=0` to `ZT_NONFREE=1`, and rebuild `package/zerotier`. The bundled GitHub Actions workflow performs those steps and records the resulting license metadata automatically.
+
 ---
 
-## 📄 License
+## 📄 Licenses
 
-Licensed under the Apache License, Version 2.0.
+This LuCI application is licensed under the Apache License, Version 2.0.
+
+The optional ZeroTier embedded Controller built by the GitHub Actions workflow is governed by ZeroTier's Source-Available License. The workflow includes that license alongside its artifacts.
