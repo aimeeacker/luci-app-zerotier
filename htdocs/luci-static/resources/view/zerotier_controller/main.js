@@ -1,6 +1,8 @@
 'use strict';
 'use ui';
 
+var ui = L.require('ui');
+
 /* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ */
 
 var callStatus = L.rpc.declare({
