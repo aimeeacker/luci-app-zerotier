@@ -54,6 +54,10 @@ The bundled GitHub Actions workflow targets **ImmortalWrt 25.12-SNAPSHOT x86/64*
 
 ### Method 1: GitHub Actions for ImmortalWrt 25.12 x86/64
 
+The default workflow is pinned to the ImmortalWrt `25.12-SNAPSHOT` SDK/feed
+series and builds Controller-enabled ZeroTier `1.16.0-r100`. It does not use
+the rolling development snapshot SDK.
+
 1. Run the **Build ImmortalWrt Controller Packages** workflow.
 2. Download the `immortalwrt-25.12-x86_64-zerotier-controller` artifact.
 3. Verify the files against `SHA256SUMS`.
@@ -72,7 +76,9 @@ rm -f /tmp/luci-indexcache
 /etc/init.d/uhttpd restart
 ```
 
-Snapshot SDKs are rolling. For safest results, run firmware and packages built from the same ImmortalWrt snapshot. The workflow accepts a custom SDK target-directory URL when manually dispatched.
+For safest results, run firmware and packages built from the same ImmortalWrt
+release series. The workflow accepts a custom SDK target-directory URL when
+manually dispatched.
 
 ### Method 2: Manual LuCI Installation on Router
 
