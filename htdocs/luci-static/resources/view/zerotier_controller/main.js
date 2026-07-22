@@ -94,8 +94,8 @@ return L.view.extend({
 	render: function(data) {
 		var status = data[0] || {};
 		var networksData = data[1] || {};
-		var networks = networksData.networks || [];
-		var activeNwid = networks.length > 0 ? networks[0] : null;
+		var networks = (networksData && Array.isArray(networksData.networks)) ? networksData.networks : [];
+		var activeNwid = (networks && networks.length > 0) ? networks[0] : null;
 
 		var viewContainer = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, [ _('ZeroTier Controller Dashboard') ]),
@@ -221,20 +221,25 @@ return L.view.extend({
 		]).then(function(res) {
 			var netInfo = res[0] || {};
 			var membersRes = res[1] || {};
-			var membersMap = membersRes.members || {};
-			var peersMap = membersRes.peers || [];
+			var membersMap = (membersRes && membersRes.members) ? membersRes.members : {};
+			var peersMap = (membersRes && Array.isArray(membersRes.peers)) ? membersRes.peers : [];
 			
 			// Build peers lookup table
 			var peerLastSeen = {};
 			var peerLatency = {};
 			peersMap.forEach(function(p) {
-				if (p.address) {
+				if (p && p.address) {
 					peerLastSeen[p.address] = p.lastSend || 0;
 					peerLatency[p.address] = p.latency !== undefined ? p.latency : -1;
 				}
 			});
 
-			var membersList = Object.keys(membersMap).map(function(k) { return membersMap[k]; });
+			var membersList = [];
+			if (Array.isArray(membersMap)) {
+				membersList = membersMap;
+			} else if (membersMap && typeof membersMap === 'object') {
+				membersList = Object.keys(membersMap).map(function(k) { return membersMap[k]; });
+			}
 
 			panel.innerHTML = '';
 			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerLastSeen, peerLatency));

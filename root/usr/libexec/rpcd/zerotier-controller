@@ -66,10 +66,11 @@ case "$1" in
 				;;
 			list_networks)
 				res="$(zt_api GET /network)"
-				if [ -z "$res" ]; then
+				valid_arr="$(echo "$res" | jq -c 'if type == "array" then . else [] end' 2>/dev/null)"
+				if [ -z "$valid_arr" ]; then
 					echo '{"networks": []}'
 				else
-					echo "{\"networks\": $res}"
+					echo "{\"networks\": $valid_arr}"
 				fi
 				;;
 			get_network_info)
