@@ -1,84 +1,87 @@
 'use strict';
+'require view';
+'require rpc';
+'require ui';
 
 /* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ / ImmortalWrt */
 
-var callStatus = L.rpc.declare({
+var callStatus = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'status'
 });
 
-var callListNetworks = L.rpc.declare({
+var callListNetworks = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'list_networks'
 });
 
-var callGetNetworkInfo = L.rpc.declare({
+var callGetNetworkInfo = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'get_network_info',
 	params: [ 'nwid' ]
 });
 
-var callCreateNetwork = L.rpc.declare({
+var callCreateNetwork = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'create_network',
 	params: [ 'name' ]
 });
 
-var callListMembers = L.rpc.declare({
+var callListMembers = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'list_members',
 	params: [ 'nwid' ]
 });
 
-var callAuthorizeMember = L.rpc.declare({
+var callAuthorizeMember = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'authorize_member',
 	params: [ 'nwid', 'nodeid', 'authorized' ]
 });
 
-var callChangeMemberIP = L.rpc.declare({
+var callChangeMemberIP = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'change_member_ip',
 	params: [ 'nwid', 'nodeid', 'ip_assignments' ]
 });
 
-var callRenameMember = L.rpc.declare({
+var callRenameMember = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'rename_member',
 	params: [ 'nwid', 'nodeid', 'name' ]
 });
 
-var callAddRoute = L.rpc.declare({
+var callAddRoute = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'add_route',
 	params: [ 'nwid', 'target', 'via' ]
 });
 
-var callDelRoute = L.rpc.declare({
+var callDelRoute = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'del_route',
 	params: [ 'nwid', 'target' ]
 });
 
-var callDeleteMember = L.rpc.declare({
+var callDeleteMember = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'delete_member',
 	params: [ 'nwid', 'nodeid' ]
 });
 
-var callExportBackup = L.rpc.declare({
+var callExportBackup = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'export_backup',
 	params: [ 'nwid' ]
 });
 
-var callImportBackup = L.rpc.declare({
+var callImportBackup = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'import_backup',
 	params: [ 'backup_data' ]
 });
 
-return L.view.extend({
+return view.extend({
 	handleSaveAndApply: null,
 	handleSave: null,
 	handleReset: null,
@@ -143,10 +146,9 @@ return L.view.extend({
 										E('button', {
 											'class': 'btn cbi-button-action',
 											'style': 'width: 100%; text-align: left; font-family: monospace;',
-											'click': function(ev) {
-												ev.preventDefault();
+											'click': ui.createHandlerFn(this, function() {
 												self.loadNetworkDetails(nwid);
-											}
+											})
 										}, [ nwid ])
 									]);
 								}.bind(this))
@@ -162,14 +164,13 @@ return L.view.extend({
 							E('button', {
 								'class': 'btn cbi-button-save',
 								'style': 'width: 100%;',
-								'click': function(ev) {
-									ev.preventDefault();
+								'click': ui.createHandlerFn(this, function() {
 									var name = document.getElementById('new-net-name').value || 'new_network';
 									return callCreateNetwork(name).then(function(res) {
-										alert(_('Created network: ') + (res.nwid || res.id));
-										location.reload();
+										ui.addNotification(null, E('p', {}, [ _('Created network: ') + (res.nwid || res.id) ]), 'info');
+										window.location.reload();
 									});
-								}
+								})
 							}, [ _('Create New Network') ])
 						])
 					]),
@@ -182,22 +183,21 @@ return L.view.extend({
 							E('button', {
 								'class': 'btn cbi-button-action',
 								'style': 'width: 100%;',
-								'click': function(ev) {
-									ev.preventDefault();
+								'click': ui.createHandlerFn(this, function() {
 									var fileInput = document.getElementById('backup-file-input');
 									if (!fileInput.files || !fileInput.files[0]) {
-										alert(_('Please select a JSON backup file.'));
+										ui.addNotification(null, E('p', {}, [ _('Please select a JSON backup file.') ]), 'error');
 										return;
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
 										callImportBackup(e.target.result).then(function(res) {
-											alert(_('Network backup restored successfully.'));
-											location.reload();
+											ui.addNotification(null, E('p', {}, [ _('Network backup restored successfully.') ]), 'info');
+											window.location.reload();
 										});
 									};
 									reader.readAsText(fileInput.files[0]);
-								}
+								})
 							}, [ _('Import Backup') ])
 						])
 					])
@@ -277,16 +277,15 @@ return L.view.extend({
 				E('div', {}, [
 					E('button', {
 						'class': 'btn cbi-button-action',
-						'click': function(ev) {
-							ev.preventDefault();
-							callExportBackup(nwid).then(function(backupData) {
+						'click': ui.createHandlerFn(this, function() {
+							return callExportBackup(nwid).then(function(backupData) {
 								var blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
 								var a = document.createElement('a');
-								a.href = URL.createObjectURL(blob);
+								a.href = window.URL.createObjectURL(blob);
 								a.download = 'zt-backup-' + nwid + '.json';
 								a.click();
 							});
-						}
+						})
 					}, [ _('Export Backup (JSON)') ])
 				])
 			]),
@@ -299,10 +298,9 @@ return L.view.extend({
 						E('button', {
 							'class': 'btn cbi-button-neutral',
 							'style': 'margin-right: 8px;',
-							'click': function(ev) {
-								ev.preventDefault();
+							'click': ui.createHandlerFn(this, function() {
 								self.loadNetworkDetails(nwid);
-							}
+							})
 						}, [ _('Refresh') ]),
 						E('a', { 'href': '#add-member-section', 'class': 'btn cbi-button-action' }, [ _('Add Member Manually') ])
 					])
@@ -384,24 +382,22 @@ return L.view.extend({
 										E('button', {
 											'class': m.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
 											'style': 'margin-right: 4px;',
-											'click': function(ev) {
-												ev.preventDefault();
-												callAuthorizeMember(nwid, m.id, !m.authorized).then(function() {
+											'click': ui.createHandlerFn(this, function() {
+												return callAuthorizeMember(nwid, m.id, !m.authorized).then(function() {
 													self.loadNetworkDetails(nwid);
 												});
-											}
+											})
 										}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
 										E('button', {
 											'class': 'btn cbi-button-remove',
 											'disabled': isController ? 'disabled' : null,
-											'click': function(ev) {
-												ev.preventDefault();
+											'click': ui.createHandlerFn(this, function() {
 												if (confirm(_('Delete member ') + m.id + '?')) {
-													callDeleteMember(nwid, m.id).then(function() {
+													return callDeleteMember(nwid, m.id).then(function() {
 														self.loadNetworkDetails(nwid);
 													});
 												}
-											}
+											})
 										}, [ _('Delete') ])
 									])
 								]);
@@ -425,19 +421,18 @@ return L.view.extend({
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
-						'click': function(ev) {
-							ev.preventDefault();
+						'click': ui.createHandlerFn(this, function() {
 							var nodeid = document.getElementById('add-nodeid').value;
 							var name = document.getElementById('add-name').value;
 							if (!nodeid || nodeid.length !== 10) {
-								alert(_('Node ID must be 10 characters.'));
+								ui.addNotification(null, E('p', {}, [ _('Node ID must be 10 characters.') ]), 'error');
 								return;
 							}
-							callAuthorizeMember(nwid, nodeid, true).then(function() {
+							return callAuthorizeMember(nwid, nodeid, true).then(function() {
 								if (name) callRenameMember(nwid, nodeid, name);
 								self.loadNetworkDetails(nwid);
 							});
-						}
+						})
 					}, [ _('Add & Authorize') ])
 				])
 			]),
@@ -461,12 +456,11 @@ return L.view.extend({
 								E('td', {}, [
 									E('button', {
 										'class': 'btn cbi-button-remove',
-										'click': function(ev) {
-											ev.preventDefault();
-											callDelRoute(nwid, r.target).then(function() {
+										'click': ui.createHandlerFn(this, function() {
+											return callDelRoute(nwid, r.target).then(function() {
 												self.loadNetworkDetails(nwid);
 											});
-										}
+										})
 									}, [ _('Delete Route') ])
 								])
 							]);
@@ -484,15 +478,14 @@ return L.view.extend({
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
-						'click': function(ev) {
-							ev.preventDefault();
+						'click': ui.createHandlerFn(this, function() {
 							var target = document.getElementById('route-target').value;
 							var via = document.getElementById('route-via').value;
 							if (!target) return;
-							callAddRoute(nwid, target, via).then(function() {
+							return callAddRoute(nwid, target, via).then(function() {
 								self.loadNetworkDetails(nwid);
 							});
-						}
+						})
 					}, [ _('Add Route') ])
 				])
 			])
