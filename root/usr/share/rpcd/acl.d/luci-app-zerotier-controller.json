@@ -1,0 +1,32 @@
+{
+	"luci-app-zerotier-controller": {
+		"description": "Grant access to ZeroTier Controller ubus API",
+		"read": {
+			"ubus": {
+				"zerotier-controller": [
+					"status",
+					"list_networks",
+					"get_network_info",
+					"list_members",
+					"export_backup"
+				]
+			},
+			"uci": [ "zerotier_controller" ]
+		},
+		"write": {
+			"ubus": {
+				"zerotier-controller": [
+					"create_network",
+					"authorize_member",
+					"change_member_ip",
+					"rename_member",
+					"add_route",
+					"del_route",
+					"delete_member",
+					"import_backup"
+				]
+			},
+			"uci": [ "zerotier_controller" ]
+		}
+	}
+}

@@ -1,0 +1,271 @@
+#!/bin/sh
+
+# ZeroTier Controller rpcd plugin for OpenWrt ubus
+
+get_token() {
+	if [ -f /var/lib/zerotier-one/authtoken.secret ]; then
+		tr -d '\r\n' < /var/lib/zerotier-one/authtoken.secret
+	elif [ -f /etc/zerotier/authtoken.secret ]; then
+		tr -d '\r\n' < /etc/zerotier/authtoken.secret
+	else
+		echo ""
+	fi
+}
+
+zt_api() {
+	method="$1"
+	path="$2"
+	data="$3"
+	token="$(get_token)"
+
+	if [ -z "$token" ]; then
+		echo '{"error": "authtoken.secret not found"}'
+		return
+	fi
+
+	if [ -n "$data" ]; then
+		curl -s -X "$method" \
+			-H "X-ZT-Direct-Token: $token" \
+			-H "Content-Type: application/json" \
+			-d "$data" \
+			"http://127.0.0.1:9993$path"
+	else
+		curl -s -X "$method" \
+			-H "X-ZT-Direct-Token: $token" \
+			"http://127.0.0.1:9993$path"
+	fi
+}
+
+case "$1" in
+	list)
+		echo '{'
+		echo '  "status": {},'
+		echo '  "list_networks": {},'
+		echo '  "get_network_info": { "nwid": "string" },'
+		echo '  "create_network": { "name": "string" },'
+		echo '  "list_members": { "nwid": "string" },'
+		echo '  "authorize_member": { "nwid": "string", "nodeid": "string", "authorized": "boolean" },'
+		echo '  "change_member_ip": { "nwid": "string", "nodeid": "string", "ip_assignments": "array" },'
+		echo '  "rename_member": { "nwid": "string", "nodeid": "string", "name": "string" },'
+		echo '  "add_route": { "nwid": "string", "target": "string", "via": "string" },'
+		echo '  "del_route": { "nwid": "string", "target": "string" },'
+		echo '  "delete_member": { "nwid": "string", "nodeid": "string" },'
+		echo '  "export_backup": { "nwid": "string" },'
+		echo '  "import_backup": { "backup_data": "string" }'
+		echo '}'
+		;;
+	call)
+		case "$2" in
+			status)
+				res="$(zt_api GET /status)"
+				if [ -z "$res" ]; then
+					echo '{"online": false}'
+				else
+					echo "$res"
+				fi
+				;;
+			list_networks)
+				res="$(zt_api GET /network)"
+				if [ -z "$res" ]; then
+					echo '{"networks": []}'
+				else
+					echo "{\"networks\": $res}"
+				fi
+				;;
+			get_network_info)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				if [ -z "$nwid" ]; then
+					echo '{"error": "missing nwid"}'
+				else
+					zt_api GET "/network/$nwid"
+				fi
+				;;
+			create_network)
+				read -r input
+				name="$(echo "$input" | jq -r '.name // "network"')"
+				status="$(zt_api GET /status)"
+				nodeid="$(echo "$status" | jq -r '.address // empty')"
+				
+				if [ -z "$nodeid" ]; then
+					echo '{"error": "Failed to get controller Node ID"}'
+					exit 1
+				fi
+				
+				# Generate random 6-hex suffix
+				suffix="$(hexdump -n 3 -e '4/1 "%02x"' /dev/urandom 2>/dev/null || date +%s | md5sum | cut -c 1-6)"
+				new_nwid="${nodeid}${suffix}"
+				
+				# Generate random 10.x.y.0/24 subnet
+				rand_x="$(( ( $(hexdump -n 1 -e '1/1 "%u"' /dev/urandom 2>/dev/null || echo 120) % 120 ) + 100 ))"
+				rand_y="$(( ( $(hexdump -n 1 -e '1/1 "%u"' /dev/urandom 2>/dev/null || echo 50) % 250 ) + 1 ))"
+				subnet="10.${rand_x}.${rand_y}"
+				
+				payload="$(cat <<EOF
+{
+  "name": "$name",
+  "private": true,
+  "v4AssignMode": { "zt": true },
+  "ipAssignmentPools": [
+    { "ipRangeStart": "${subnet}.1", "ipRangeEnd": "${subnet}.254" }
+  ],
+  "routes": [
+    { "target": "${subnet}.0/24", "via": null }
+  ]
+}
+EOF
+)"
+				res="$(zt_api POST "/network/$new_nwid" "$payload")"
+				echo "$res"
+				;;
+			list_members)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				if [ -z "$nwid" ]; then
+					echo '{"error": "missing nwid"}'
+					exit 1
+				fi
+				
+				members_list="$(zt_api GET "/network/$nwid/member")"
+				peers_list="$(zt_api GET "/peer")"
+				
+				# Render structured JSON array of member details with peers info
+				echo "{\"members\": $members_list, \"peers\": $peers_list}"
+				;;
+			authorize_member)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				nodeid="$(echo "$input" | jq -r '.nodeid // empty')"
+				auth="$(echo "$input" | jq -r '.authorized // false')"
+				
+				if [ -z "$nwid" ] || [ -z "$nodeid" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					zt_api POST "/network/$nwid/member/$nodeid" "{\"authorized\": $auth}"
+				fi
+				;;
+			change_member_ip)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				nodeid="$(echo "$input" | jq -r '.nodeid // empty')"
+				ips="$(echo "$input" | jq -c '.ip_assignments // []')"
+				
+				if [ -z "$nwid" ] || [ -z "$nodeid" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					zt_api POST "/network/$nwid/member/$nodeid" "{\"ipAssignments\": $ips}"
+				fi
+				;;
+			rename_member)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				nodeid="$(echo "$input" | jq -r '.nodeid // empty')"
+				name="$(echo "$input" | jq -r '.name // ""')"
+				
+				if [ -z "$nwid" ] || [ -z "$nodeid" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					zt_api POST "/network/$nwid/member/$nodeid" "{\"name\": \"$name\"}"
+				fi
+				;;
+			add_route)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				target="$(echo "$input" | jq -r '.target // empty')"
+				via="$(echo "$input" | jq -r '.via // empty')"
+				
+				if [ -z "$nwid" ] || [ -z "$target" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					net_json="$(zt_api GET "/network/$nwid")"
+					if [ -z "$via" ] || [ "$via" = "null" ]; then
+						new_routes="$(echo "$net_json" | jq --arg t "$target" '.routes + [{"target": $t, "via": null}]')"
+					else
+						new_routes="$(echo "$net_json" | jq --arg t "$target" --arg v "$via" '.routes + [{"target": $t, "via": $v}]')"
+					fi
+					zt_api POST "/network/$nwid" "{\"routes\": $new_routes}"
+				fi
+				;;
+			del_route)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				target="$(echo "$input" | jq -r '.target // empty')"
+				
+				if [ -z "$nwid" ] || [ -z "$target" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					net_json="$(zt_api GET "/network/$nwid")"
+					new_routes="$(echo "$net_json" | jq --arg t "$target" '([.routes[] | select(.target != $t)])')"
+					zt_api POST "/network/$nwid" "{\"routes\": $new_routes}"
+				fi
+				;;
+			delete_member)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				nodeid="$(echo "$input" | jq -r '.nodeid // empty')"
+				
+				if [ -z "$nwid" ] || [ -z "$nodeid" ]; then
+					echo '{"error": "missing parameters"}'
+				else
+					zt_api DELETE "/network/$nwid/member/$nodeid"
+				fi
+				;;
+			export_backup)
+				read -r input
+				nwid="$(echo "$input" | jq -r '.nwid // empty')"
+				if [ -z "$nwid" ]; then
+					echo '{"error": "missing nwid"}'
+				else
+					net="$(zt_api GET "/network/$nwid")"
+					members_map="$(zt_api GET "/network/$nwid/member")"
+					
+					# Build array of full member objects
+					members_arr="[]"
+					for nodeid in $(echo "$members_map" | jq -r 'keys[]?'); do
+						m_detail="$(zt_api GET "/network/$nwid/member/$nodeid")"
+						members_arr="$(echo "$members_arr" | jq --argjson m "$m_detail" '. + [$m]')"
+					done
+					
+					jq -n --arg nwid "$nwid" --argjson net "$net" --argjson members "$members_arr" '{
+						nwid: $nwid,
+						backup_time: (now | strftime("%Y-%m-%d %H:%M:%S")),
+						network: $net,
+						members: $members
+					}'
+				fi
+				;;
+			import_backup)
+				read -r input
+				backup_json="$(echo "$input" | jq -r '.backup_data // empty')"
+				if [ -z "$backup_json" ]; then
+					echo '{"error": "missing backup data"}'
+					exit 1
+				fi
+				
+				nwid="$(echo "$backup_json" | jq -r '.nwid // empty')"
+				net_config="$(echo "$backup_json" | jq -c '.network // empty')"
+				
+				if [ -z "$nwid" ] || [ -z "$net_config" ]; then
+					echo '{"error": "invalid backup format"}'
+					exit 1
+				fi
+				
+				# Push network config
+				zt_api POST "/network/$nwid" "$net_config" >/dev/null
+				
+				# Push members
+				echo "$backup_json" | jq -c '.members[]?' | while read -r member; do
+					m_id="$(echo "$member" | jq -r '.id // empty')"
+					if [ -n "$m_id" ]; then
+						zt_api POST "/network/$nwid/member/$m_id" "$member" >/dev/null
+					fi
+				done
+				
+				echo "{\"success\": true, \"nwid\": \"$nwid\"}"
+				;;
+			*)
+				echo '{"error": "Unknown ubus method"}'
+				;;
+		esac
+		;;
+esac
