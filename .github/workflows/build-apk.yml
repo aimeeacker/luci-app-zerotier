@@ -73,11 +73,12 @@ jobs:
       - name: Install feeds and enable embedded Controller
         working-directory: sdk
         run: |
-          # Install only the exact runtime and LuCI host-tool sources needed by
-          # the three requested outputs. This does not select the feeds en masse.
+          # Install only ZeroTier and the exact LuCI host-tool sources needed
+          # by the three requested outputs. curl and jq remain runtime APK
+          # dependencies and are intentionally not added to the compile graph.
           ./scripts/feeds update base packages luci
-          ./scripts/feeds install -p base lua ip-tiny
-          ./scripts/feeds install -p packages zerotier curl jq luasrcdiet
+          ./scripts/feeds install -p base lua
+          ./scripts/feeds install -p packages zerotier luasrcdiet
           ./scripts/feeds install -p luci luci-base csstidy
 
           zerotier_makefile="feeds/packages/net/zerotier/Makefile"
@@ -204,8 +205,9 @@ jobs:
           done
 
           make package/luci-app-zerotier/clean
+          # luci.mk emits both the application APK and every selected language
+          # APK from this single source target.
           make package/luci-app-zerotier/compile V=s -j"$(nproc)"
-          make package/luci-i18n-zerotier-zh-cn/compile V=s -j"$(nproc)"
 
       - name: Collect and verify artifacts
         run: |
