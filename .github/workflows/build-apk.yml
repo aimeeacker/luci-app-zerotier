@@ -113,16 +113,15 @@ jobs:
 
           # SDK Config.in defaults CONFIG_ALL=y. Rebuild .config through the
           # Kconfig allnoconfig mode so every unrelated package is disabled,
-          # while the fragment keeps only the two requested packages enabled.
-          printf '%s\n' \
-            '# CONFIG_ALL is not set' \
-            '# CONFIG_ALL_KMODS is not set' \
-            '# CONFIG_ALL_NONSHARED is not set' \
-            'CONFIG_PACKAGE_zerotier=m' \
-            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config.minimal
+          # then enable only the two requested packages.
           : > .config
-          KCONFIG_ALLCONFIG=.config.minimal \
-            ./scripts/config/conf --allnoconfig Config.in
+          ./scripts/config/conf --allnoconfig Config.in
+          sed -i -E \
+            '/^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
+            .config
+          printf '%s\n' \
+            'CONFIG_PACKAGE_zerotier=m' \
+            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
           echo "Bulk selectors before final defconfig:"
           grep -E '^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?' .config
           make defconfig
