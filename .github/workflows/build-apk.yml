@@ -1,4 +1,4 @@
-name: Build OpenWrt APK & IPK
+name: Build OpenWrt 25.12 APK & IPK
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build x86_64 Package (APK & IPK)
+    name: Build OpenWrt 25.12 x86_64 Package (APK & IPK)
     runs-on: ubuntu-latest
 
     steps:
@@ -21,16 +21,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3
+            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 zstd
 
-      - name: Download & Extract OpenWrt SDK (x86_64)
+      - name: Download & Extract OpenWrt 25.12 SDK (x86_64)
         run: |
-          # Fetch the latest OpenWrt 24.10 SDK for x86_64
-          SDK_URL="https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          # Fetch the latest OpenWrt 25.12 SNAPSHOT SDK for x86_64
+          SDK_FILENAME=$(curl -s https://downloads.openwrt.org/snapshots/targets/x86/64/ | grep -o 'openwrt-sdk-x86-64[^"]*\.tar\.zst' | head -n 1)
+          if [ -z "$SDK_FILENAME" ]; then
+            SDK_FILENAME="openwrt-sdk-x86-64_gcc-14.4.0_musl.Linux-x86_64.tar.zst"
+          fi
+          SDK_URL="https://downloads.openwrt.org/snapshots/targets/x86/64/${SDK_FILENAME}"
+          echo "Downloading OpenWrt 25.12 SDK: $SDK_URL"
           wget -q "$SDK_URL" -O sdk.tar.zst
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
-          echo "SDK Extracted Successfully"
+          echo "OpenWrt 25.12 SDK Extracted Successfully"
 
       - name: Copy Package to SDK
         run: |
@@ -55,14 +60,14 @@ jobs:
           find sdk/bin/ -name "*zerotier-controller*" -exec cp {} output/ \; 2>/dev/null || true
           
           # Create a standalone offline installer tarball
-          tar -czvf output/luci-app-zerotier-controller-offline.tar.gz root/ htdocs/ README.md
+          tar -czvf output/luci-app-zerotier-controller-openwrt25.12-offline.tar.gz root/ htdocs/ README.md
           
           ls -la output/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-x86_64-zerotier-controller-packages
+          name: openwrt-25.12-x86_64-zerotier-controller-packages
           path: output/*
 
       - name: Create Release (Tag Triggers Only)
