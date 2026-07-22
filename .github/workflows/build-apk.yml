@@ -118,6 +118,7 @@ jobs:
             '# CONFIG_ALL is not set' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
+            '# CONFIG_AUTOREMOVE is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config
           make defconfig
@@ -126,6 +127,11 @@ jobs:
 
           if grep -qE '^CONFIG_ALL(_(KMODS|NONSHARED))?=[ym]$' .config; then
             echo "SDK broad package selectors are still enabled" >&2
+            exit 1
+          fi
+
+          if grep -q '^CONFIG_AUTOREMOVE=y$' .config; then
+            echo "SDK build directory cleanup is still enabled" >&2
             exit 1
           fi
 
