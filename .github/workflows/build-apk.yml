@@ -84,14 +84,19 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'ZT_NONFREE=0' "$zerotier_makefile"; then
-            echo "Expected ZT_NONFREE=0 was not found in $zerotier_makefile" >&2
+          if grep -q 'ZT_NONFREE=0' "$zerotier_makefile"; then
+            sed -i 's/ZT_NONFREE=0/ZT_NONFREE=1/' "$zerotier_makefile"
+          elif ! grep -q 'ZT_NONFREE=' "$zerotier_makefile"; then
+            sed -i '/^[[:space:]]*ZT_SSO_SUPPORTED=0 \\$/a\	ZT_NONFREE=1 \\' "$zerotier_makefile"
+          fi
+
+          if [ "$(grep -c 'ZT_NONFREE=1' "$zerotier_makefile")" -ne 1 ]; then
+            echo "Failed to enable exactly one ZT_NONFREE=1 build flag" >&2
             exit 1
           fi
 
-          sed -i 's/ZT_NONFREE=0/ZT_NONFREE=1/' "$zerotier_makefile"
           sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=100/' "$zerotier_makefile"
-          sed -i 's/^PKG_LICENSE:=MPL-2.0$/PKG_LICENSE:=MPL-2.0 AND LicenseRef-ZeroTier-Source-Available-1.0/' "$zerotier_makefile"
+          sed -i 's/^PKG_LICENSE:=.*/PKG_LICENSE:=MPL-2.0 AND LicenseRef-ZeroTier-Source-Available-1.0/' "$zerotier_makefile"
           sed -i 's|^PKG_LICENSE_FILES:=.*|PKG_LICENSE_FILES:=LICENSE-MPL.txt nonfree/LICENSE.md|' "$zerotier_makefile"
 
           grep -E '^(PKG_VERSION|PKG_RELEASE|PKG_LICENSE|PKG_LICENSE_FILES)|ZT_NONFREE=' "$zerotier_makefile"
