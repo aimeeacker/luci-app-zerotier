@@ -101,8 +101,8 @@ jobs:
       - name: Configure packages
         working-directory: sdk
         run: |
-          # Start from a minimal config. SDK defaults otherwise enable every
-          # kernel module and every non-shared package.
+          # First expand the SDK target/profile defaults so every package
+          # symbol exists in .config.
           printf '%s\n' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
@@ -110,14 +110,39 @@ jobs:
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config
           make defconfig
 
+          # The x86/64 SDK profile selects a large default package set even
+          # when ALL_KMODS is disabled. Pin every expanded package to "not
+          # set", then re-enable only the two requested packages. A second
+          # defconfig adds only their mandatory build/runtime dependencies.
+          sed -i -E 's/^(CONFIG_PACKAGE_[^=]+)=[ym]$/# \1 is not set/' .config
+          sed -i -E \
+            '/^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
+            .config
+          printf '%s\n' \
+            'CONFIG_PACKAGE_zerotier=m' \
+            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
+          make defconfig
+
           if grep -qE '^CONFIG_ALL_(KMODS|NONSHARED)=y$' .config; then
             echo "SDK broad package selectors are still enabled" >&2
             exit 1
           fi
 
+          for package in zerotier luci-app-zerotier-controller; do
+            if ! grep -q "^CONFIG_PACKAGE_${package}=m$" .config; then
+              echo "Expected CONFIG_PACKAGE_${package}=m" >&2
+              exit 1
+            fi
+          done
+
           grep -E '^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=' .config
-          echo "Selected kernel modules:"
+          selected_kmods="$(awk '/^CONFIG_PACKAGE_kmod-.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
+          echo "Selected kernel modules ($selected_kmods):"
           grep -E '^CONFIG_PACKAGE_kmod-.*=[ym]$' .config || true
+          if [ "$selected_kmods" -gt 64 ]; then
+            echo "Refusing broad build: $selected_kmods kernel modules are selected" >&2
+            exit 1
+          fi
 
       - name: Build Controller-enabled ZeroTier
         working-directory: sdk
