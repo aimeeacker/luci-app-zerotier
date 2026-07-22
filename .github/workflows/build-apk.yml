@@ -73,8 +73,12 @@ jobs:
       - name: Install feeds and enable embedded Controller
         working-directory: sdk
         run: |
-          ./scripts/feeds update packages luci
-          ./scripts/feeds install -p packages zerotier
+          # Install only the exact runtime and LuCI host-tool sources needed by
+          # the three requested outputs. This does not select the feeds en masse.
+          ./scripts/feeds update base packages luci
+          ./scripts/feeds install -p base lua ip-tiny
+          ./scripts/feeds install -p packages zerotier curl jq luasrcdiet
+          ./scripts/feeds install -p luci luci-base csstidy
 
           zerotier_makefile="feeds/packages/net/zerotier/Makefile"
           if ! grep -q '^PKG_VERSION:=1\.16\.0$' "$zerotier_makefile" ||
@@ -189,6 +193,16 @@ jobs:
       - name: Build unified LuCI package and Simplified Chinese translation
         working-directory: sdk
         run: |
+          # luci-base/host supplies jsmin and po2lmo. Build it explicitly so a
+          # missing host tool fails before packaging either LuCI APK.
+          make package/feeds/luci/luci-base/host/compile V=s -j"$(nproc)"
+          for tool in jsmin po2lmo; do
+            if ! find staging_dir -type f -path "*/bin/$tool" -perm -111 -print -quit | grep -q .; then
+              echo "Required LuCI host tool not found: $tool" >&2
+              exit 1
+            fi
+          done
+
           make package/luci-app-zerotier/clean
           make package/luci-app-zerotier/compile V=s -j"$(nproc)"
           make package/luci-i18n-zerotier-zh-cn/compile V=s -j"$(nproc)"
