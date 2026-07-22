@@ -1,5 +1,4 @@
 'use strict';
-'use ui';
 
 /* ZeroTier Controller Management View for OpenWrt LuCI 21.02+ / 24.10+ / ImmortalWrt */
 
