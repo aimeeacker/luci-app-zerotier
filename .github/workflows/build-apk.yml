@@ -116,6 +116,9 @@ jobs:
           # then enable only the two requested packages.
           : > .config
           ./scripts/config/conf --allnoconfig Config.in
+          echo "Selected packages before explicit reset: $(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
+          sed -i -E 's/^(CONFIG_PACKAGE_[^=]+)=[ym]$/# \1 is not set/' .config
+          echo "Selected packages after explicit reset: $(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
           sed -i -E \
             '/^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
             .config
