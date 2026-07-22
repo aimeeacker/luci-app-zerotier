@@ -104,6 +104,7 @@ jobs:
           # First expand the SDK target/profile defaults so every package
           # symbol exists in .config.
           printf '%s\n' \
+            '# CONFIG_ALL is not set' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
@@ -116,16 +117,17 @@ jobs:
           # defconfig adds only their mandatory build/runtime dependencies.
           sed -i -E 's/^(CONFIG_PACKAGE_[^=]+)=[ym]$/# \1 is not set/' .config
           sed -i -E \
-            '/^(# )?CONFIG_ALL_(KMODS|NONSHARED)(=.*| is not set)$/d; /^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
+            '/^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?(=.*| is not set)$/d; /^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
             .config
           printf '%s\n' \
+            '# CONFIG_ALL is not set' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
           make defconfig
 
-          if grep -qE '^CONFIG_ALL_(KMODS|NONSHARED)=[ym]$' .config; then
+          if grep -qE '^CONFIG_ALL(_(KMODS|NONSHARED))?=[ym]$' .config; then
             echo "SDK broad package selectors are still enabled" >&2
             exit 1
           fi
