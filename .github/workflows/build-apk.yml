@@ -120,6 +120,7 @@ jobs:
             '# CONFIG_ALL_NONSHARED is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config.minimal
+          : > .config
           KCONFIG_ALLCONFIG=.config.minimal \
             ./scripts/config/conf --allnoconfig Config.in
           echo "Bulk selectors before final defconfig:"
