@@ -101,17 +101,34 @@ jobs:
       - name: Configure packages
         working-directory: sdk
         run: |
+          # SDK defaults enable every kernel module and every non-shared package.
+          # Remove those expanded selections before enabling only our two targets.
+          sed -i \
+            -e '/^CONFIG_PACKAGE_/d' \
+            -e '/^CONFIG_ALL_KMODS=/d' \
+            -e '/^CONFIG_ALL_NONSHARED=/d' \
+            .config
           printf '%s\n' \
+            '# CONFIG_ALL_KMODS is not set' \
+            '# CONFIG_ALL_NONSHARED is not set' \
             'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
           make defconfig
+
+          if grep -qE '^CONFIG_ALL_(KMODS|NONSHARED)=y$' .config; then
+            echo "SDK broad package selectors are still enabled" >&2
+            exit 1
+          fi
+
           grep -E '^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=' .config
+          echo "Selected kernel modules:"
+          grep -E '^CONFIG_PACKAGE_kmod-.*=[ym]$' .config || true
 
       - name: Build Controller-enabled ZeroTier
         working-directory: sdk
         run: |
-          make package/zerotier/clean
-          make package/zerotier/compile V=s -j"$(nproc)"
+          make package/feeds/packages/zerotier/clean
+          make package/feeds/packages/zerotier/compile V=s -j"$(nproc)"
 
       - name: Build LuCI controller package
         working-directory: sdk
