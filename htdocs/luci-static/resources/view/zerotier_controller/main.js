@@ -85,16 +85,14 @@ return L.view.extend({
 
 	load: function() {
 		return Promise.all([
-			L.require('ui'),
 			callStatus(),
 			callListNetworks()
 		]);
 	},
 
 	render: function(data) {
-		var ui = data[0];
-		var status = data[1] || {};
-		var networksData = data[2] || {};
+		var status = data[0] || {};
+		var networksData = data[1] || {};
 		
 		var networks = [];
 		if (Array.isArray(networksData)) {
@@ -147,7 +145,7 @@ return L.view.extend({
 											'style': 'width: 100%; text-align: left; font-family: monospace;',
 											'click': function(ev) {
 												ev.preventDefault();
-												self.loadNetworkDetails(nwid, ui);
+												self.loadNetworkDetails(nwid);
 											}
 										}, [ nwid ])
 									]);
@@ -168,9 +166,7 @@ return L.view.extend({
 									ev.preventDefault();
 									var name = document.getElementById('new-net-name').value || 'new_network';
 									return callCreateNetwork(name).then(function(res) {
-										if (ui && ui.addNotification) {
-											ui.addNotification(null, E('p', {}, [ _('Created network: ') + (res.nwid || res.id) ]), 'info');
-										}
+										alert(_('Created network: ') + (res.nwid || res.id));
 										location.reload();
 									});
 								}
@@ -190,17 +186,13 @@ return L.view.extend({
 									ev.preventDefault();
 									var fileInput = document.getElementById('backup-file-input');
 									if (!fileInput.files || !fileInput.files[0]) {
-										if (ui && ui.addNotification) {
-											ui.addNotification(null, E('p', {}, [ _('Please select a JSON backup file.') ]), 'error');
-										}
+										alert(_('Please select a JSON backup file.'));
 										return;
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
 										callImportBackup(e.target.result).then(function(res) {
-											if (ui && ui.addNotification) {
-												ui.addNotification(null, E('p', {}, [ _('Network backup restored successfully.') ]), 'info');
-											}
+											alert(_('Network backup restored successfully.'));
 											location.reload();
 										});
 									};
@@ -223,14 +215,14 @@ return L.view.extend({
 		// Automatically load details of first network if available
 		if (activeNwid) {
 			setTimeout(function() {
-				this.loadNetworkDetails(activeNwid, ui);
+				this.loadNetworkDetails(activeNwid);
 			}.bind(this), 100);
 		}
 
 		return viewContainer;
 	},
 
-	loadNetworkDetails: function(nwid, ui) {
+	loadNetworkDetails: function(nwid) {
 		var panel = document.getElementById('main-network-panel');
 		if (!panel) return;
 		panel.innerHTML = '';
@@ -263,14 +255,14 @@ return L.view.extend({
 			}
 
 			panel.innerHTML = '';
-			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerLastSeen, peerLatency, ui));
+			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerLastSeen, peerLatency));
 			
 			// Apply default filter: Online Only
 			this.filterMembersTable();
 		}.bind(this));
 	},
 
-	renderDashboardContent: function(nwid, netInfo, members, peerLastSeen, peerLatency, ui) {
+	renderDashboardContent: function(nwid, netInfo, members, peerLastSeen, peerLatency) {
 		var self = this;
 		return E('div', {}, [
 			// Network Overview & Backup Actions
@@ -309,7 +301,7 @@ return L.view.extend({
 							'style': 'margin-right: 8px;',
 							'click': function(ev) {
 								ev.preventDefault();
-								self.loadNetworkDetails(nwid, ui);
+								self.loadNetworkDetails(nwid);
 							}
 						}, [ _('Refresh') ]),
 						E('a', { 'href': '#add-member-section', 'class': 'btn cbi-button-action' }, [ _('Add Member Manually') ])
@@ -395,7 +387,7 @@ return L.view.extend({
 											'click': function(ev) {
 												ev.preventDefault();
 												callAuthorizeMember(nwid, m.id, !m.authorized).then(function() {
-													self.loadNetworkDetails(nwid, ui);
+													self.loadNetworkDetails(nwid);
 												});
 											}
 										}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
@@ -406,7 +398,7 @@ return L.view.extend({
 												ev.preventDefault();
 												if (confirm(_('Delete member ') + m.id + '?')) {
 													callDeleteMember(nwid, m.id).then(function() {
-														self.loadNetworkDetails(nwid, ui);
+														self.loadNetworkDetails(nwid);
 													});
 												}
 											}
@@ -438,14 +430,12 @@ return L.view.extend({
 							var nodeid = document.getElementById('add-nodeid').value;
 							var name = document.getElementById('add-name').value;
 							if (!nodeid || nodeid.length !== 10) {
-								if (ui && ui.addNotification) {
-									ui.addNotification(null, E('p', {}, [ _('Node ID must be 10 characters.') ]), 'error');
-								}
+								alert(_('Node ID must be 10 characters.'));
 								return;
 							}
 							callAuthorizeMember(nwid, nodeid, true).then(function() {
 								if (name) callRenameMember(nwid, nodeid, name);
-								self.loadNetworkDetails(nwid, ui);
+								self.loadNetworkDetails(nwid);
 							});
 						}
 					}, [ _('Add & Authorize') ])
@@ -474,7 +464,7 @@ return L.view.extend({
 										'click': function(ev) {
 											ev.preventDefault();
 											callDelRoute(nwid, r.target).then(function() {
-												self.loadNetworkDetails(nwid, ui);
+												self.loadNetworkDetails(nwid);
 											});
 										}
 									}, [ _('Delete Route') ])
@@ -500,7 +490,7 @@ return L.view.extend({
 							var via = document.getElementById('route-via').value;
 							if (!target) return;
 							callAddRoute(nwid, target, via).then(function() {
-								self.loadNetworkDetails(nwid, ui);
+								self.loadNetworkDetails(nwid);
 							});
 						}
 					}, [ _('Add Route') ])
