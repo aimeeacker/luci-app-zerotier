@@ -101,8 +101,19 @@ jobs:
       - name: Configure packages
         working-directory: sdk
         run: |
-          # First expand the SDK target/profile defaults so every package
-          # symbol exists in .config.
+          # The SDK generator preserves every package selected by its buildbot
+          # as an unconditional default in Config-build.in. Remove only those
+          # generated PACKAGE_* stanzas; keep all ABI and toolchain settings.
+          embedded_package_defaults="$(awk '/^config PACKAGE_/ { count++ } END { print count + 0 }' Config-build.in)"
+          echo "Removing $embedded_package_defaults embedded SDK package defaults"
+          sed -i '/^config PACKAGE_/,/^$/d' Config-build.in
+          if grep -q '^config PACKAGE_' Config-build.in; then
+            echo "Failed to remove embedded SDK package defaults" >&2
+            exit 1
+          fi
+
+          # Select only the requested packages. defconfig adds their mandatory
+          # build and runtime dependencies.
           printf '%s\n' \
             '# CONFIG_ALL is not set' \
             '# CONFIG_ALL_KMODS is not set' \
@@ -110,25 +121,7 @@ jobs:
             'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier-controller=m' > .config
           make defconfig
-
-          # SDK Config.in defaults CONFIG_ALL=y. Rebuild .config through the
-          # Kconfig allnoconfig mode so every unrelated package is disabled,
-          # then enable only the two requested packages.
-          : > .config
-          ./scripts/config/conf --allnoconfig Config.in
-          echo "Selected packages before explicit reset: $(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
-          sed -i -E 's/^(CONFIG_PACKAGE_[^=]+)=[ym]$/# \1 is not set/' .config
-          echo "Selected packages after explicit reset: $(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
-          sed -i -E \
-            '/^# CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller) is not set$/d; /^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=/d' \
-            .config
-          printf '%s\n' \
-            'CONFIG_PACKAGE_zerotier=m' \
-            'CONFIG_PACKAGE_luci-app-zerotier-controller=m' >> .config
-          echo "Bulk selectors before final defconfig:"
-          grep -E '^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?' .config
-          make defconfig
-          echo "Bulk selectors after final defconfig:"
+          echo "Bulk selectors:"
           grep -E '^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?' .config
 
           if grep -qE '^CONFIG_ALL(_(KMODS|NONSHARED))?=[ym]$' .config; then
@@ -143,7 +136,15 @@ jobs:
             fi
           done
 
-          grep -E '^CONFIG_PACKAGE_(zerotier|luci-app-zerotier-controller)=' .config
+          selected_packages="$(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
+          echo "Selected packages ($selected_packages):"
+          if [ "$selected_packages" -gt 128 ]; then
+            grep -E '^CONFIG_PACKAGE_.*=[ym]$' .config | sed -n '1,128p'
+            echo "Refusing broad build: $selected_packages packages are selected" >&2
+            exit 1
+          fi
+          grep -E '^CONFIG_PACKAGE_.*=[ym]$' .config
+
           selected_kmods="$(awk '/^CONFIG_PACKAGE_kmod-.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
           echo "Selected kernel modules ($selected_kmods):"
           if [ "$selected_kmods" -gt 64 ]; then
