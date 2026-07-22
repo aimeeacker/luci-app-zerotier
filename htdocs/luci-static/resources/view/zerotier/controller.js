@@ -28,6 +28,12 @@ var callCreateNetwork = rpc.declare({
 	params: [ 'name' ]
 });
 
+var callUpdateIPPool = rpc.declare({
+	object: 'zerotier-controller',
+	method: 'update_ip_pool',
+	params: [ 'nwid', 'cidr', 'old_cidr' ]
+});
+
 var callListMembers = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'list_members',
@@ -132,6 +138,49 @@ function handleRpcError(err) {
 	showNotification(_('Operation failed: ') + ((err && err.message) ? err.message : String(err)), 'error');
 }
 
+function ipv4FromNumber(value) {
+	return [
+		Math.floor(value / 16777216) % 256,
+		Math.floor(value / 65536) % 256,
+		Math.floor(value / 256) % 256,
+		value % 256
+	].join('.');
+}
+
+function ipv4ToNumber(value) {
+	var match = String(value || '').match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+	if (!match)
+		return null;
+	var octets = match.slice(1).map(Number);
+	if (octets.some(function(octet) { return octet < 0 || octet > 255; }))
+		return null;
+	return octets[0] * 16777216 + octets[1] * 65536 + octets[2] * 256 + octets[3];
+}
+
+function parseIPv4CIDR(value) {
+	var match = String(value || '').trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+	if (!match)
+		return null;
+
+	var octets = match.slice(1, 5).map(Number);
+	var prefix = Number(match[5]);
+	if (octets.some(function(octet) { return octet < 0 || octet > 255; }) || prefix < 8 || prefix > 30)
+		return null;
+
+	var address = octets[0] * 16777216 + octets[1] * 65536 + octets[2] * 256 + octets[3];
+	var blockSize = Math.pow(2, 32 - prefix);
+	var network = Math.floor(address / blockSize) * blockSize;
+	var broadcast = network + blockSize - 1;
+
+	return {
+		cidr: ipv4FromNumber(network) + '/' + prefix,
+		start: ipv4FromNumber(network + 1),
+		end: ipv4FromNumber(broadcast - 1),
+		networkNumber: network,
+		broadcastNumber: broadcast
+	};
+}
+
 function dashboardStyles() {
 	return [
 		'.ztc-dashboard { --ztc-accent: var(--primary-color, #2563eb); --ztc-success: #16a34a; --ztc-danger: #dc2626; --ztc-warning: #d97706; --ztc-radius: 12px; }',
@@ -176,6 +225,9 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-form-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }',
 		'.ztc-dashboard .ztc-form-field { flex:1 1 210px; min-width:0; }',
 		'.ztc-dashboard .ztc-form-field label { display:block; margin-bottom:6px; font-weight:600; }',
+		'.ztc-dashboard .ztc-help { margin:7px 0 0; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.5; }',
+		'.ztc-dashboard .ztc-pool-preview { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; padding:10px 12px; border-radius:8px; background:rgba(37,99,235,.07); font-size:12px; }',
+		'.ztc-dashboard .ztc-pool-preview strong { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }',
 		'.ztc-toast-stack { position:fixed; z-index:10000; top:18px; right:18px; display:grid; gap:10px; width:min(390px, calc(100vw - 36px)); pointer-events:none; }',
 		'.ztc-toast { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:13px 14px; border-left:4px solid #2563eb; border-radius:10px; color:#0f172a; background:#fff; box-shadow:0 14px 35px rgba(15,23,42,.22); pointer-events:auto; }',
 		'.ztc-toast-success { border-left-color:var(--ztc-success); }',
@@ -408,6 +460,17 @@ return view.extend({
 
 	renderDashboardContent: function(nwid, netInfo, members, peerOnline, peerLatency) {
 		var self = this;
+		var configuredPool = (netInfo.ipAssignmentPools || [])[0] || {};
+		var configuredPoolStart = ipv4ToNumber(configuredPool.ipRangeStart);
+		var directIPv4Route = (netInfo.routes || []).find(function(route) {
+			var parsedRoute = route && !route.via ? parseIPv4CIDR(route.target) : null;
+			return parsedRoute && configuredPoolStart !== null &&
+				configuredPoolStart >= parsedRoute.networkNumber && configuredPoolStart <= parsedRoute.broadcastNumber;
+		}) || (netInfo.routes || []).find(function(route) {
+			return route && !route.via && parseIPv4CIDR(route.target);
+		});
+		var currentPoolCidr = directIPv4Route ? directIPv4Route.target : '';
+		var currentPool = parseIPv4CIDR(currentPoolCidr);
 		return E('div', { 'class': 'ztc-network-content' }, [
 			// Network Overview & Backup Actions
 			E('div', { 'class': 'cbi-section ztc-card ztc-overview' }, [
@@ -436,6 +499,61 @@ return view.extend({
 							}).catch(handleRpcError);
 						}
 					}, [ _('Export Backup (JSON)') ])
+				])
+			]),
+
+			// Managed IPv4 pool editor
+			E('div', { 'class': 'cbi-section ztc-card' }, [
+				E('h3', {}, [ _('Managed IPv4 Pool') ]),
+				E('div', { 'class': 'ztc-form-row' }, [
+					E('div', { 'class': 'ztc-form-field' }, [
+						E('label', { 'for': 'ip-pool-cidr' }, [ _('Network CIDR:') ]),
+						E('input', {
+							'type': 'text',
+							'id': 'ip-pool-cidr',
+							'value': currentPoolCidr,
+							'placeholder': '10.16.0.1/24',
+							'style': 'width: 100%;',
+							'input': function(ev) {
+								var preview = document.getElementById('ip-pool-preview');
+								var parsed = parseIPv4CIDR(ev.target.value);
+								if (!preview) return;
+								preview.textContent = parsed ?
+									_('Network: %s · Assignable: %s - %s').format(parsed.cidr, parsed.start, parsed.end) :
+									_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.');
+							}
+						}),
+						E('p', { 'class': 'ztc-help' }, [
+							_('Host addresses are accepted and normalized automatically, for example 10.16.0.1/24 becomes 10.16.0.0/24.')
+						])
+					]),
+					E('button', {
+						'class': 'btn cbi-button-save',
+						'click': function(ev) {
+							ev.preventDefault();
+							var input = document.getElementById('ip-pool-cidr');
+							var parsed = parseIPv4CIDR(input && input.value);
+							if (!parsed) {
+								showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
+								return;
+							}
+							return callUpdateIPPool(nwid, parsed.cidr, currentPoolCidr)
+								.then(requireRpcResult)
+								.then(function(res) {
+									showNotification(_('IP pool updated to ') + (res.cidr || parsed.cidr), 'success');
+									self.loadNetworkDetails(nwid);
+								})
+								.catch(handleRpcError);
+						}
+					}, [ _('Save IP Pool') ])
+				]),
+				E('div', { 'class': 'ztc-pool-preview', 'id': 'ip-pool-preview' }, [
+					currentPool ?
+						_('Network: %s · Assignable: %s - %s').format(currentPool.cidr, currentPool.start, currentPool.end) :
+						_('No managed IPv4 pool is configured.')
+				]),
+				E('p', { 'class': 'ztc-help' }, [
+					_('Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller.')
 				])
 			]),
 

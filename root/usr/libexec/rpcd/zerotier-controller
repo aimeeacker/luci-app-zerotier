@@ -47,6 +47,43 @@ valid_nodeid() {
 	[ "${#1}" -eq 10 ]
 }
 
+ipv4_from_int() {
+	value="$1"
+	printf '%d.%d.%d.%d' \
+		"$((value / 16777216 % 256))" \
+		"$((value / 65536 % 256))" \
+		"$((value / 256 % 256))" \
+		"$((value % 256))"
+}
+
+parse_ipv4_cidr() {
+	cidr_values="$(jq -rn --arg cidr "$1" '
+		$cidr
+		| capture("^(?<a>[0-9]{1,3})\\.(?<b>[0-9]{1,3})\\.(?<c>[0-9]{1,3})\\.(?<d>[0-9]{1,3})/(?<prefix>[0-9]{1,2})$")?
+		| select(. != null)
+		| [ .a, .b, .c, .d, .prefix ] | map(tonumber)
+		| select(.[0:4] | all(. >= 0 and . <= 255))
+		| select(.[4] >= 8 and .[4] <= 30)
+		| @tsv
+	' 2>/dev/null)"
+	[ -n "$cidr_values" ] || return 1
+
+	cidr_a="$(printf '%s' "$cidr_values" | cut -f1)"
+	cidr_b="$(printf '%s' "$cidr_values" | cut -f2)"
+	cidr_c="$(printf '%s' "$cidr_values" | cut -f3)"
+	cidr_d="$(printf '%s' "$cidr_values" | cut -f4)"
+	CIDR_PREFIX="$(printf '%s' "$cidr_values" | cut -f5)"
+
+	cidr_value="$((cidr_a * 16777216 + cidr_b * 65536 + cidr_c * 256 + cidr_d))"
+	cidr_block_size="$((1 << (32 - CIDR_PREFIX)))"
+	cidr_network_value="$((cidr_value / cidr_block_size * cidr_block_size))"
+	cidr_broadcast_value="$((cidr_network_value + cidr_block_size - 1))"
+
+	CIDR_NETWORK="$(ipv4_from_int "$cidr_network_value")"
+	CIDR_FIRST="$(ipv4_from_int "$((cidr_network_value + 1))")"
+	CIDR_LAST="$(ipv4_from_int "$((cidr_broadcast_value - 1))")"
+}
+
 read_rpc_input() {
 	rpc_method="$1"
 	input=''
@@ -123,6 +160,7 @@ case "$1" in
 		echo '  "list_networks": {},'
 		echo '  "get_network_info": { "nwid": "string" },'
 		echo '  "create_network": { "name": "string" },'
+		echo '  "update_ip_pool": { "nwid": "string", "cidr": "string", "old_cidr": "string" },'
 		echo '  "list_members": { "nwid": "string" },'
 		echo '  "authorize_member": { "nwid": "string", "nodeid": "string", "authorized": "boolean" },'
 		echo '  "change_member_ip": { "nwid": "string", "nodeid": "string", "ip_assignments": "array" },'
@@ -194,6 +232,60 @@ case "$1" in
 					--arg route "${subnet}.0/24" \
 					'{ name: $name, private: true, v4AssignMode: { zt: true }, ipAssignmentPools: [{ ipRangeStart: $ip_start, ipRangeEnd: $ip_end }], routes: [{ target: $route, via: null }] }')"
 				zt_api POST /controller/network "$payload"
+				;;
+			update_ip_pool)
+				if ! read_rpc_input update_ip_pool; then exit 0; fi
+				nwid="$(printf '%s' "$input" | jq -r '.nwid // empty')"
+				cidr="$(printf '%s' "$input" | jq -r '.cidr // empty')"
+				old_cidr="$(printf '%s' "$input" | jq -r '.old_cidr // empty')"
+
+				if ! valid_nwid "$nwid"; then
+					echo '{"error": "invalid network ID"}'
+					exit 0
+				fi
+				if ! parse_ipv4_cidr "$cidr"; then
+					echo '{"error": "IPv4 CIDR must use a prefix between /8 and /30"}'
+					exit 0
+				fi
+
+				normalized_cidr="${CIDR_NETWORK}/${CIDR_PREFIX}"
+				net_json="$(zt_api GET "/controller/network/$nwid")"
+				if has_error "$net_json"; then
+					printf '%s\n' "$net_json"
+					exit 0
+				fi
+
+				# Replace only the direct route shown by the editor, preserve routed
+				# subnets and every unrelated direct route, and de-duplicate the new CIDR.
+				new_routes="$(printf '%s' "$net_json" | jq -c \
+					--arg old "$old_cidr" \
+					--arg new "$normalized_cidr" '
+					[ (.routes // [])[]
+					  | select(.target != $new)
+					  | select(($old == "") or (.target != $old) or (.via != null))
+					] + [{ target: $new, via: null }]
+				')"
+				v4_mode="$(printf '%s' "$net_json" | jq -c '(.v4AssignMode // {}) + { zt: true }')"
+				payload="$(jq -cn \
+					--arg start "$CIDR_FIRST" \
+					--arg last "$CIDR_LAST" \
+					--arg cidr "$normalized_cidr" \
+					--argjson mode "$v4_mode" \
+					--argjson routes "$new_routes" \
+					'{ v4AssignMode: $mode, ipAssignmentPools: [{ ipRangeStart: $start, ipRangeEnd: $last }], routes: $routes, requestedCidr: $cidr }'
+				)"
+				# requestedCidr is useful to the UI but is not part of the Controller schema.
+				api_payload="$(printf '%s' "$payload" | jq -c 'del(.requestedCidr)')"
+				result="$(zt_api POST "/controller/network/$nwid" "$api_payload")"
+				if has_error "$result"; then
+					printf '%s\n' "$result"
+				else
+					printf '%s' "$result" | jq -c \
+						--arg cidr "$normalized_cidr" \
+						--arg start "$CIDR_FIRST" \
+						--arg last "$CIDR_LAST" \
+						'. + { cidr: $cidr, ipRangeStart: $start, ipRangeEnd: $last }'
+				fi
 				;;
 			list_members)
 				if ! read_rpc_input list_members; then exit 0; fi

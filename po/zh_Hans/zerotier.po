@@ -72,6 +72,33 @@ msgstr "允许托管 IP/路由"
 msgid "Assigned IP"
 msgstr "分配的 IP"
 
+msgid "Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller."
+msgstr "修改地址池会同时更新其直连托管路由。现有成员的 IP 分配将保留，直至手动修改或由 Controller 重新分配。"
+
+msgid "Enter a valid IPv4 CIDR using a prefix between /8 and /30."
+msgstr "请输入有效的 IPv4 CIDR，前缀长度须介于 /8 与 /30 之间。"
+
+msgid "Host addresses are accepted and normalized automatically, for example 10.16.0.1/24 becomes 10.16.0.0/24."
+msgstr "支持输入主机地址并自动规范化，例如 10.16.0.1/24 会转换为 10.16.0.0/24。"
+
+msgid "IP pool updated to "
+msgstr "IP 地址池已更新为 "
+
+msgid "Managed IPv4 Pool"
+msgstr "托管 IPv4 地址池"
+
+msgid "Network CIDR:"
+msgstr "网络 CIDR："
+
+msgid "Network: %s · Assignable: %s - %s"
+msgstr "网络：%s · 可分配范围：%s - %s"
+
+msgid "No managed IPv4 pool is configured."
+msgstr "尚未配置托管 IPv4 地址池。"
+
+msgid "Save IP Pool"
+msgstr "保存 IP 地址池"
+
 msgid "Authorize"
 msgstr "授权"
 

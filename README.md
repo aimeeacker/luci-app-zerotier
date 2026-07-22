@@ -9,6 +9,7 @@
 - 配置 ZeroTier 服务、持久目录、防火墙和加入的网络。
 - 查看 ZeroTier 虚拟接口状态。
 - 管理本机内置 Controller 的网络、成员、授权、IP 和路由。
+- 在 Controller 页面直接编辑托管 IPv4 CIDR、地址池和对应直连路由。
 - 导入、导出 Controller 网络 JSON 备份。
 - 自适应 LuCI 页面和移动端布局。
 - 独立生成简体中文语言包。

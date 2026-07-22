@@ -21,6 +21,7 @@
 			"ubus": {
 				"zerotier-controller": [
 					"create_network",
+					"update_ip_pool",
 					"authorize_member",
 					"change_member_ip",
 					"rename_member",

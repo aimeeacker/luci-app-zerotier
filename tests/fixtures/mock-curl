@@ -1,0 +1,32 @@
+#!/bin/sh
+method=GET
+body_file=''
+data=''
+url=''
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-o) body_file="$2"; shift 2 ;;
+		-w|-H) shift 2 ;;
+		-X) method="$2"; shift 2 ;;
+		-d) data="$2"; shift 2 ;;
+		http://*) url="$1"; shift ;;
+		*) shift ;;
+	esac
+done
+
+case "$method $url" in
+	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001")
+		body='{"id":"8056c2e21c000001","v4AssignMode":{"zt":false},"routes":[{"target":"10.10.10.0/24","via":null},{"target":"192.168.50.0/24","via":"10.10.10.1"},{"target":"10.200.0.0/16","via":null}]}'
+		;;
+	"POST http://127.0.0.1:9993/controller/network/8056c2e21c000001")
+		printf '%s' "$data" > "$ZT_TEST_PAYLOAD"
+		body="$data"
+		;;
+	*)
+		body='{"error":"unexpected mock request"}'
+		;;
+esac
+
+printf '%s' "$body" > "$body_file"
+printf '200'
