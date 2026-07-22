@@ -94,7 +94,15 @@ return L.view.extend({
 	render: function(data) {
 		var status = data[0] || {};
 		var networksData = data[1] || {};
-		var networks = (networksData && Array.isArray(networksData.networks)) ? networksData.networks : [];
+		var networks = [];
+		if (Array.isArray(networksData)) {
+			networks = networksData;
+		} else if (networksData && Array.isArray(networksData.networks)) {
+			networks = networksData.networks;
+		}
+		if (!Array.isArray(networks)) {
+			networks = [];
+		}
 		var activeNwid = (networks && networks.length > 0) ? networks[0] : null;
 
 		var viewContainer = E('div', { 'class': 'cbi-map' }, [
