@@ -419,3 +419,18 @@ msgstr "目标 CIDR 不能为空。"
 
 msgid "Unnamed Network"
 msgstr "未命名网络"
+
+msgid "Latency"
+msgstr "延迟"
+
+msgid "Optional"
+msgstr "可选"
+
+msgid "Preassigned IP (Optional):"
+msgstr "预分配 IP（可选）："
+
+msgid "Name and IP are optional. The member is authorized immediately."
+msgstr "名称和 IP 均可留空；成员将立即授权。"
+
+msgid "Enter a valid IPv4 address."
+msgstr "请输入有效的 IPv4 地址。"

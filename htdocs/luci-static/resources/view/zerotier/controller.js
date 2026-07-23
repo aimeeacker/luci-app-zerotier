@@ -228,28 +228,31 @@ function managedPoolInfo(netInfo) {
 function dashboardStyles() {
 	return [
 		'.ztc-dashboard { --ztc-accent:var(--primary-color, #2563eb); --ztc-success:#16a34a; --ztc-danger:#dc2626; --ztc-warning:#d97706; --ztc-radius:12px; font-variant-numeric:tabular-nums; }',
-		'.ztc-dashboard .ztc-hero { display:flex; align-items:center; justify-content:space-between; gap:20px; margin:0 0 16px; padding:20px 22px; overflow:hidden; border-radius:16px; color:#fff; background:linear-gradient(135deg, #172554 0%, #1d4ed8 58%, #0891b2 100%); box-shadow:0 12px 30px rgba(30,64,175,.18); }',
-		'.ztc-dashboard .ztc-hero-main { display:flex; align-items:center; gap:15px; min-width:0; }',
+		'.ztc-dashboard .ztc-hero { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:22px; margin:0 0 16px; padding:20px 22px; overflow:hidden; border-radius:16px; color:#fff; background:linear-gradient(135deg, #172554 0%, #1d4ed8 58%, #0891b2 100%); box-shadow:0 12px 30px rgba(30,64,175,.18); }',
+		'.ztc-dashboard .ztc-hero-main { display:flex; align-items:flex-start; gap:15px; min-width:0; }',
 		'.ztc-dashboard .ztc-brandmark { display:grid; place-items:center; flex:0 0 46px; width:46px; height:46px; border:1px solid rgba(255,255,255,.35); border-radius:13px; background:rgba(255,255,255,.14); font-size:17px; font-weight:800; letter-spacing:.06em; backdrop-filter:blur(8px); }',
+		'.ztc-dashboard .ztc-controller-copy { min-width:0; }',
 		'.ztc-dashboard .ztc-hero h2 { margin:0 0 3px; padding:0; border:0; color:#fff; font-size:clamp(20px, 2.5vw, 28px); }',
 		'.ztc-dashboard .ztc-hero p { margin:0; color:rgba(255,255,255,.82); line-height:1.45; }',
-		'.ztc-dashboard .ztc-count { flex:0 0 auto; padding:7px 12px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.12); font-weight:600; white-space:nowrap; }',
-		'.ztc-dashboard .ztc-card { margin:0 0 15px; padding:16px 17px; border:1px solid var(--border-color-medium, rgba(100,116,139,.22)); border-radius:var(--ztc-radius); background:var(--background-color-high, rgba(255,255,255,.98)); box-shadow:0 5px 18px rgba(15,23,42,.05); }',
-		'.ztc-dashboard .ztc-card h3 { margin:0 0 13px; padding:0; border:0; font-size:16px; }',
-		'.ztc-dashboard .ztc-heading-reset { margin:0 !important; }',
-		'.ztc-dashboard .ztc-subtitle { display:block; margin-top:5px; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.45; }',
-		'.ztc-dashboard .ztc-status-card { display:flex; align-items:center; justify-content:space-between; gap:18px; border-left:4px solid var(--ztc-accent); }',
-		'.ztc-dashboard .ztc-eyebrow { display:block; margin-bottom:5px; color:var(--text-color-medium, #64748b); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }',
-		'.ztc-dashboard .ztc-code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }',
-		'.ztc-dashboard .ztc-node-id { font-size:17px; overflow-wrap:anywhere; }',
-		'.ztc-dashboard .ztc-version { margin-left:8px; color:var(--text-color-medium, #64748b); font-size:12px; }',
+		'.ztc-dashboard .ztc-controller-meta { display:flex; flex-wrap:wrap; align-items:baseline; gap:5px 9px; margin-top:9px; color:rgba(255,255,255,.78); font-size:12px; }',
+		'.ztc-dashboard .ztc-controller-label { font-weight:600; }',
+		'.ztc-dashboard .ztc-node-id { color:#fff; font-size:14px; font-weight:800; overflow-wrap:anywhere; }',
+		'.ztc-dashboard .ztc-version { color:rgba(255,255,255,.70); font-size:12px; }',
+		'.ztc-dashboard .ztc-controller-side { display:flex; flex-direction:column; align-items:flex-end; gap:9px; }',
+		'.ztc-dashboard .ztc-count { flex:0 0 auto; padding:6px 11px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.12); font-size:12px; font-weight:700; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-status-pills { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }',
 		'.ztc-dashboard .ztc-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; color:#fff; font-size:12px; font-weight:700; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-pill::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px rgba(255,255,255,.18); }',
 		'.ztc-dashboard .ztc-pill-success { background:var(--ztc-success); }',
 		'.ztc-dashboard .ztc-pill-danger { background:var(--ztc-danger); }',
 		'.ztc-dashboard .ztc-pill-warning { background:var(--ztc-warning); }',
-		'.ztc-dashboard .ztc-error { margin:10px 0 0; padding:9px 11px; border-radius:8px; color:#991b1b; background:rgba(254,226,226,.86); font-size:13px; }',
+		'.ztc-dashboard .ztc-error { margin:10px 0 0; padding:9px 11px; border-radius:8px; color:#991b1b; background:rgba(254,226,226,.90); font-size:13px; }',
+		'.ztc-dashboard .ztc-hero .ztc-error { color:#fff; background:rgba(127,29,29,.50); }',
+		'.ztc-dashboard .ztc-card { margin:0 0 15px; padding:16px 17px; border:1px solid var(--border-color-medium, rgba(100,116,139,.22)); border-radius:var(--ztc-radius); background:var(--background-color-high, rgba(255,255,255,.98)); box-shadow:0 5px 18px rgba(15,23,42,.05); }',
+		'.ztc-dashboard .ztc-card h3 { margin:0 0 13px; padding:0; border:0; font-size:16px; }',
+		'.ztc-dashboard .ztc-heading-reset { margin:0 !important; }',
+		'.ztc-dashboard .ztc-subtitle { display:block; margin-top:5px; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.45; }',
+		'.ztc-dashboard .ztc-code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }',
 		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(260px, 310px) minmax(0, 1fr); gap:16px; align-items:start; }',
 		'.ztc-dashboard .ztc-sidebar { position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; padding-right:2px; scrollbar-width:thin; }',
 		'.ztc-dashboard .ztc-network-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }',
@@ -273,56 +276,61 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-sidebar-form label { display:block; margin-bottom:5px; font-size:12px; font-weight:700; }',
 		'.ztc-dashboard .ztc-sidebar-preview { padding:9px 10px; border-radius:8px; color:var(--text-color-medium, #64748b); background:rgba(37,99,235,.07); font-size:11px; line-height:1.45; overflow-wrap:anywhere; }',
 		'.ztc-dashboard .ztc-help { margin:7px 0 0; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.5; }',
-		'.ztc-dashboard .ztc-filterbar { display:grid; grid-template-columns:minmax(200px, .55fr) minmax(300px, 1.45fr); gap:12px; margin-bottom:13px; padding:10px; border-radius:9px; background:rgba(100,116,139,.08); }',
+		'.ztc-dashboard .ztc-filterbar { display:grid; grid-template-columns:minmax(180px, .48fr) minmax(280px, 1.52fr); gap:12px; margin-bottom:13px; padding:10px; border-radius:9px; background:rgba(100,116,139,.08); }',
 		'.ztc-dashboard .ztc-filterfield { display:flex; align-items:center; gap:7px; min-width:0; }',
 		'.ztc-dashboard .ztc-filterfield label { flex:0 0 auto; }',
 		'.ztc-dashboard .ztc-filterfield select, .ztc-dashboard .ztc-filterfield input { min-width:0; }',
 		'.ztc-dashboard .ztc-filterfield-grow { min-width:0; }',
-		'.ztc-dashboard .ztc-table-wrap { max-height:520px; overflow:auto; border:1px solid var(--border-color-medium, #dbe2ea); border-radius:9px; }',
-		'.ztc-dashboard .ztc-table-wrap table { margin:0; }',
-		'.ztc-dashboard .ztc-table-wrap thead th { position:sticky; top:0; z-index:1; background:var(--background-color-high, #fff); white-space:nowrap; }',
-		'.ztc-dashboard .ztc-table-wrap tbody tr:hover { background:rgba(37,99,235,.045); }',
-		'.ztc-dashboard .ztc-members-table { width:100%; min-width:760px; table-layout:fixed; }',
-		'.ztc-dashboard .ztc-members-table th, .ztc-dashboard .ztc-members-table td { box-sizing:border-box; vertical-align:middle; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(1) { width:12%; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(2) { width:19%; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(3) { width:18%; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(4) { width:14%; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(5) { width:11%; }',
-		'.ztc-dashboard .ztc-members-table th:nth-child(6) { width:26%; }',
-		'.ztc-dashboard .ztc-members-table input { box-sizing:border-box; width:100%; min-width:0; max-width:none; }',
+		'.ztc-dashboard .ztc-member-wrap, .ztc-dashboard .ztc-route-wrap { overflow:auto; border:1px solid var(--border-color-medium, #dbe2ea); border-radius:9px; }',
+		'.ztc-dashboard .ztc-member-wrap { max-height:590px; }',
+		'.ztc-dashboard .ztc-members-table, .ztc-dashboard .ztc-route-table { display:table !important; width:100%; margin:0; table-layout:fixed; border-collapse:collapse; border-spacing:0; }',
+		'.ztc-dashboard .ztc-members-table { min-width:940px; }',
+		'.ztc-dashboard .ztc-members-table thead, .ztc-dashboard .ztc-route-table thead { display:table-header-group !important; }',
+		'.ztc-dashboard .ztc-members-table tbody, .ztc-dashboard .ztc-route-table tbody { display:table-row-group !important; }',
+		'.ztc-dashboard .ztc-members-table tfoot, .ztc-dashboard .ztc-route-table tfoot { display:table-footer-group !important; }',
+		'.ztc-dashboard .ztc-members-table tr, .ztc-dashboard .ztc-route-table tr { display:table-row !important; }',
+		'.ztc-dashboard .ztc-members-table th, .ztc-dashboard .ztc-members-table td, .ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { display:table-cell !important; box-sizing:border-box; vertical-align:middle !important; text-align:left !important; }',
+		'.ztc-dashboard .ztc-members-table th, .ztc-dashboard .ztc-route-table th { padding:9px 8px !important; color:var(--text-color-high, inherit); background:rgba(100,116,139,.08); font-weight:700; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-members-table thead th { position:sticky; top:0; z-index:2; }',
+		'.ztc-dashboard .ztc-members-table tbody td { padding:11px 8px !important; border-top:1px solid var(--border-color-medium, rgba(100,116,139,.18)); }',
+		'.ztc-dashboard .ztc-members-table tbody tr:hover { background:rgba(37,99,235,.045); }',
+		'.ztc-dashboard .ztc-members-table tfoot td { padding:10px 8px !important; border-top:1px solid var(--border-color-medium, rgba(100,116,139,.28)); background:rgba(100,116,139,.045); }',
+		'.ztc-dashboard .ztc-member-node-col { width:13%; }',
+		'.ztc-dashboard .ztc-member-name-col { width:18%; }',
+		'.ztc-dashboard .ztc-member-ip-col { width:17%; }',
+		'.ztc-dashboard .ztc-member-connection-col { width:12%; }',
+		'.ztc-dashboard .ztc-member-latency-col { width:9%; }',
+		'.ztc-dashboard .ztc-member-status-col { width:11%; }',
+		'.ztc-dashboard .ztc-member-action-col { width:20%; }',
+		'.ztc-dashboard .ztc-members-table input { box-sizing:border-box; width:100%; min-width:0; max-width:none; min-height:32px; padding-top:5px; padding-bottom:5px; }',
 		'.ztc-dashboard .ztc-table-sort { cursor:pointer; user-select:none; }',
-		'.ztc-dashboard .ztc-table-sort::after { content:"↕"; margin-left:5px; color:var(--text-color-medium, #64748b); font-size:10px; opacity:.65; }',
+		'.ztc-dashboard .ztc-table-sort::after { content:"↕"; margin-left:4px; color:var(--text-color-medium, #64748b); font-size:9px; opacity:.60; }',
 		'.ztc-dashboard .ztc-member-id { overflow:hidden; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }',
-		'.ztc-dashboard .ztc-connection { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; }',
-		'.ztc-dashboard .ztc-link-mode, .ztc-dashboard .ztc-auth-badge { display:inline-flex; align-items:center; justify-content:center; min-width:58px; padding:3px 7px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.04em; line-height:1.25; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-link-mode, .ztc-dashboard .ztc-auth-badge { display:inline-flex; align-items:center; justify-content:center; min-width:52px; padding:3px 7px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.035em; line-height:1.25; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-link-mode::before { content:""; width:6px; height:6px; margin-right:5px; border-radius:50%; background:currentColor; }',
 		'.ztc-dashboard .ztc-link-direct { color:#047857; background:rgba(16,185,129,.14); }',
 		'.ztc-dashboard .ztc-link-relay { color:#b45309; background:rgba(245,158,11,.16); }',
 		'.ztc-dashboard .ztc-link-local { color:#1d4ed8; background:rgba(59,130,246,.14); }',
 		'.ztc-dashboard .ztc-link-offline { color:#64748b; background:rgba(100,116,139,.14); }',
-		'.ztc-dashboard .ztc-latency { color:var(--text-color-medium, #64748b); font-size:11px; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-latency-cell { color:var(--text-color-medium, #64748b); font-size:11px; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-auth-authorized { color:#fff; background:var(--ztc-success); }',
 		'.ztc-dashboard .ztc-auth-pending { color:#fff; background:#f59e0b; }',
-		'.ztc-dashboard .ztc-member-actions { display:flex; flex-wrap:nowrap; gap:5px; white-space:nowrap; }',
-		'.ztc-dashboard .ztc-member-actions .btn { flex:1 1 auto; min-width:0; padding-left:8px; padding-right:8px; }',
-		'.ztc-dashboard .ztc-route-wrap { overflow-x:auto; border:1px solid var(--border-color-medium, #dbe2ea); border-radius:9px; }',
-		'.ztc-dashboard .ztc-route-table { display:table !important; width:100%; min-width:680px; margin:0; table-layout:fixed; border-collapse:collapse; border-spacing:0; }',
-		'.ztc-dashboard .ztc-route-table thead { display:table-header-group !important; }',
-		'.ztc-dashboard .ztc-route-table tbody { display:table-row-group !important; }',
-		'.ztc-dashboard .ztc-route-table tfoot { display:table-footer-group !important; }',
-		'.ztc-dashboard .ztc-route-table tr { display:table-row !important; }',
-		'.ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { display:table-cell !important; box-sizing:border-box; padding:9px 10px !important; vertical-align:middle !important; text-align:left !important; }',
-		'.ztc-dashboard .ztc-route-table th { color:var(--text-color-high, inherit); background:rgba(100,116,139,.08); font-weight:700; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-member-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:4px; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-member-actions .btn { flex:0 0 auto; min-width:0; min-height:30px !important; padding:3px 8px !important; font-size:11px; }',
+		'.ztc-dashboard .ztc-member-editor label, .ztc-dashboard .ztc-route-table label { display:block; margin-bottom:6px; font-size:11px; font-weight:700; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-member-editor-note { color:var(--text-color-medium, #64748b); font-size:11px; line-height:1.45; }',
+		'.ztc-dashboard .ztc-member-editor-note strong { display:block; margin-bottom:4px; color:var(--text-color-high, inherit); font-size:11px; }',
+		'.ztc-dashboard .ztc-member-editor .ztc-member-add-button { width:100%; min-height:32px !important; padding-left:6px !important; padding-right:6px !important; font-size:11px; }',
+		'.ztc-dashboard .ztc-editor-action-label, .ztc-dashboard .ztc-route-action-label { visibility:hidden; }',
+		'.ztc-dashboard .ztc-route-table { min-width:680px; }',
+		'.ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { padding:9px 10px !important; }',
 		'.ztc-dashboard .ztc-route-table tbody td { border-top:1px solid var(--border-color-medium, rgba(100,116,139,.18)); }',
 		'.ztc-dashboard .ztc-route-table tfoot td { border-top:1px solid var(--border-color-medium, rgba(100,116,139,.25)); background:rgba(100,116,139,.035); }',
 		'.ztc-dashboard .ztc-route-target-col { width:42%; }',
 		'.ztc-dashboard .ztc-route-via-col { width:38%; }',
 		'.ztc-dashboard .ztc-route-action-col { width:20%; }',
-		'.ztc-dashboard .ztc-route-table label { display:block; margin-bottom:6px; font-weight:700; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-route-table input { box-sizing:border-box; width:100%; min-width:0; max-width:none; }',
 		'.ztc-dashboard .ztc-route-table .ztc-route-button { width:100%; }',
-		'.ztc-dashboard .ztc-route-action-label { visibility:hidden; }',
 		'.ztc-dashboard .ztc-route-empty { color:var(--text-color-medium, #64748b); }',
 		'.ztc-toast-stack { position:fixed; z-index:10000; top:18px; right:18px; display:grid; gap:10px; width:min(390px, calc(100vw - 36px)); pointer-events:none; }',
 		'.ztc-toast { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:13px 14px; border-left:4px solid #2563eb; border-radius:10px; color:#0f172a; background:#fff; box-shadow:0 14px 35px rgba(15,23,42,.22); pointer-events:auto; }',
@@ -330,9 +338,9 @@ function dashboardStyles() {
 		'.ztc-toast-warning { border-left-color:var(--ztc-warning); }',
 		'.ztc-toast-error { border-left-color:var(--ztc-danger); }',
 		'.ztc-toast-close { min-height:0 !important; padding:0 2px; border:0; color:#64748b; background:transparent; font-size:20px; line-height:1; cursor:pointer; }',
-		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; max-height:none; overflow:visible; padding-right:0; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills, .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
+		'@media (max-width: 900px) { .ztc-dashboard .ztc-hero { grid-template-columns:1fr; } .ztc-dashboard .ztc-controller-side { align-items:flex-start; } .ztc-dashboard .ztc-status-pills { justify-content:flex-start; } .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; max-height:none; overflow:visible; padding-right:0; } .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
 		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } }',
-		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
+		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
 	].join('\n');
 }
 
@@ -381,26 +389,26 @@ return view.extend({
 			E('div', { 'class': 'ztc-hero' }, [
 				E('div', { 'class': 'ztc-hero-main' }, [
 					E('div', { 'class': 'ztc-brandmark', 'aria-hidden': 'true' }, [ 'ZT' ]),
-					E('div', {}, [
+					E('div', { 'class': 'ztc-controller-copy' }, [
 						E('h2', {}, [ _('ZeroTier Controller') ]),
-						E('p', {}, [ _('Self-hosted network, member and route management for this router.') ])
+						E('p', {}, [ _('Self-hosted network, member and route management for this router.') ]),
+						E('div', { 'class': 'ztc-controller-meta' }, [
+							E('span', { 'class': 'ztc-controller-label' }, [ _('Controller node') + ':' ]),
+							E('strong', { 'class': 'ztc-node-id ztc-code' }, [ status.address || _('Unavailable') ]),
+							E('span', { 'class': 'ztc-version' }, [ status.version ? 'v' + status.version : '' ])
+						]),
+						controllerProblem ? E('p', { 'class': 'ztc-error' }, [ controllerProblem ]) : ''
 					])
 				]),
-				E('span', { 'class': 'ztc-count' }, [ networks.length, ' ', networks.length === 1 ? _('network') : _('networks') ])
-			]),
-			E('div', { 'class': 'cbi-section ztc-card ztc-status-card' }, [
-				E('div', {}, [
-					E('span', { 'class': 'ztc-eyebrow' }, [ _('Controller node') ]),
-					E('strong', { 'class': 'ztc-node-id ztc-code' }, [ status.address || _('Unavailable') ]),
-					E('span', { 'class': 'ztc-version' }, [ status.version ? 'v' + status.version : '' ]),
-					controllerProblem ? E('p', { 'class': 'ztc-error' }, [ controllerProblem ]) : ''
-				]),
-				E('div', { 'class': 'ztc-status-pills' }, [
-					E('span', { 'class': 'ztc-pill ' + (status.online === true ? 'ztc-pill-success' : 'ztc-pill-warning') }, [
-						status.online === true ? _('Node Online') : _('Node Offline')
-					]),
-					E('span', { 'class': 'ztc-pill ' + (controllerReady ? 'ztc-pill-success' : 'ztc-pill-danger') }, [
-						controllerReady ? _('Controller Active') : _('Controller Unavailable')
+				E('div', { 'class': 'ztc-controller-side' }, [
+					E('span', { 'class': 'ztc-count' }, [ networks.length, ' ', networks.length === 1 ? _('network') : _('networks') ]),
+					E('div', { 'class': 'ztc-status-pills' }, [
+						E('span', { 'class': 'ztc-pill ' + (status.online === true ? 'ztc-pill-success' : 'ztc-pill-warning') }, [
+							status.online === true ? _('Node Online') : _('Node Offline')
+						]),
+						E('span', { 'class': 'ztc-pill ' + (controllerReady ? 'ztc-pill-success' : 'ztc-pill-danger') }, [
+							controllerReady ? _('Controller Active') : _('Controller Unavailable')
+						])
 					])
 				])
 			]),
@@ -557,92 +565,55 @@ return view.extend({
 		var currentPoolCidr = poolInfo.cidr;
 		var currentPool = poolInfo.parsed;
 
-		return E('div', {}, [
-			E('div', { 'class': 'cbi-section ztc-card' }, [
-				E('h3', {}, [ _('Managed IPv4 Pool') ]),
-				E('div', { 'class': 'ztc-sidebar-form' }, [
-					E('div', {}, [
-						E('label', { 'for': 'ip-pool-cidr' }, [ _('Network CIDR:') ]),
-						E('input', {
-							'type': 'text',
-							'id': 'ip-pool-cidr',
-							'value': currentPoolCidr,
-							'placeholder': '10.16.0.0/24',
-							'class': 'ztc-full ztc-code',
-							'input': function(ev) {
-								var preview = document.getElementById('ip-pool-preview');
-								var parsed = parseIPv4CIDR(ev.target.value);
-								if (preview) {
-									preview.textContent = parsed ?
-										_('Network: %s · Assignable: %s - %s').format(parsed.cidr, parsed.start, parsed.end) :
-										_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.');
-								}
+		return E('div', { 'class': 'cbi-section ztc-card' }, [
+			E('h3', {}, [ _('Managed IPv4 Pool') ]),
+			E('div', { 'class': 'ztc-sidebar-form' }, [
+				E('div', {}, [
+					E('label', { 'for': 'ip-pool-cidr' }, [ _('Network CIDR:') ]),
+					E('input', {
+						'type': 'text',
+						'id': 'ip-pool-cidr',
+						'value': currentPoolCidr,
+						'placeholder': '10.16.0.0/24',
+						'class': 'ztc-full ztc-code',
+						'input': function(ev) {
+							var preview = document.getElementById('ip-pool-preview');
+							var parsed = parseIPv4CIDR(ev.target.value);
+							if (preview) {
+								preview.textContent = parsed ?
+									_('Network: %s · Assignable: %s - %s').format(parsed.cidr, parsed.start, parsed.end) :
+									_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.');
 							}
-						})
-					]),
-					E('div', { 'class': 'ztc-sidebar-preview', 'id': 'ip-pool-preview' }, [
-						currentPool ?
-							_('Network: %s · Assignable: %s - %s').format(currentPool.cidr, currentPool.start, currentPool.end) :
-							_('No managed IPv4 pool is configured.')
-					]),
-					E('button', {
-						'class': 'btn cbi-button-save ztc-full',
-						'click': function(ev) {
-							ev.preventDefault();
-							var input = document.getElementById('ip-pool-cidr');
-							var parsed = parseIPv4CIDR(input && input.value);
-							if (!parsed) {
-								showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
-								return;
-							}
-							return callUpdateIPPool(nwid, parsed.cidr, currentPoolCidr)
-								.then(requireRpcResult)
-								.then(function(res) {
-									showNotification(_('IP pool updated to ') + (res.cidr || parsed.cidr), 'success');
-									self.loadNetworkDetails(nwid);
-								})
-								.catch(handleRpcError);
 						}
-					}, [ _('Save IP Pool') ])
+					})
 				]),
-				E('p', { 'class': 'ztc-help' }, [
-					_('Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller.')
-				])
-			]),
-			E('div', { 'class': 'cbi-section ztc-card', 'id': 'add-member-section' }, [
-				E('h3', {}, [ _('Add Member Manually') ]),
-				E('div', { 'class': 'ztc-sidebar-form' }, [
-					E('div', {}, [
-						E('label', { 'for': 'add-nodeid' }, [ _('Node ID (10 chars):') ]),
-						E('input', { 'type': 'text', 'id': 'add-nodeid', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. bab1e61f17', 'maxlength': 10 })
-					]),
-					E('div', {}, [
-						E('label', { 'for': 'add-name' }, [ _('Name / Note:') ]),
-						E('input', { 'type': 'text', 'id': 'add-name', 'class': 'ztc-full', 'placeholder': 'e.g. Laptop' })
-					]),
-					E('button', {
-						'class': 'btn cbi-button-save ztc-full',
-						'click': function(ev) {
-							ev.preventDefault();
-							var nodeid = String(document.getElementById('add-nodeid').value || '').trim().toLowerCase();
-							var name = String(document.getElementById('add-name').value || '').trim();
-							if (!/^[0-9a-f]{10}$/.test(nodeid)) {
-								showNotification(_('Node ID must be 10 hexadecimal characters.'), 'warning');
-								return;
-							}
-							return callAuthorizeMember(nwid, nodeid, true)
-								.then(requireRpcResult)
-								.then(function() {
-									return name ? callRenameMember(nwid, nodeid, name).then(requireRpcResult) : null;
-								})
-								.then(function() {
-									showNotification(_('Member added and authorized.'), 'success');
-									self.loadNetworkDetails(nwid);
-								})
-								.catch(handleRpcError);
+				E('div', { 'class': 'ztc-sidebar-preview', 'id': 'ip-pool-preview' }, [
+					currentPool ?
+						_('Network: %s · Assignable: %s - %s').format(currentPool.cidr, currentPool.start, currentPool.end) :
+						_('No managed IPv4 pool is configured.')
+				]),
+				E('button', {
+					'class': 'btn cbi-button-save ztc-full',
+					'click': function(ev) {
+						ev.preventDefault();
+						var input = document.getElementById('ip-pool-cidr');
+						var parsed = parseIPv4CIDR(input && input.value);
+						if (!parsed) {
+							showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
+							return;
 						}
-					}, [ _('Add & Authorize') ])
-				])
+						return callUpdateIPPool(nwid, parsed.cidr, currentPoolCidr)
+							.then(requireRpcResult)
+							.then(function(res) {
+								showNotification(_('IP pool updated to ') + (res.cidr || parsed.cidr), 'success');
+								self.loadNetworkDetails(nwid);
+							})
+							.catch(handleRpcError);
+					}
+				}, [ _('Save IP Pool') ])
+			]),
+			E('p', { 'class': 'ztc-help' }, [
+				_('Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller.')
 			])
 		]);
 	},
@@ -708,15 +679,25 @@ return view.extend({
 						E('input', { 'type': 'text', 'id': 'member-search-input', 'class': 'ztc-full', 'placeholder': _('Search Node ID, Name, or IP...'), 'keyup': this.filterMembersTable.bind(this) })
 					])
 				]),
-				E('div', { 'class': 'ztc-table-wrap' }, [
-					E('table', { 'class': 'table cbi-section-table ztc-members-table', 'id': 'members-table' }, [
+				E('div', { 'class': 'ztc-member-wrap' }, [
+					E('table', { 'class': 'ztc-members-table', 'id': 'members-table' }, [
+						E('colgroup', {}, [
+							E('col', { 'class': 'ztc-member-node-col' }),
+							E('col', { 'class': 'ztc-member-name-col' }),
+							E('col', { 'class': 'ztc-member-ip-col' }),
+							E('col', { 'class': 'ztc-member-connection-col' }),
+							E('col', { 'class': 'ztc-member-latency-col' }),
+							E('col', { 'class': 'ztc-member-status-col' }),
+							E('col', { 'class': 'ztc-member-action-col' })
+						]),
 						E('thead', {}, [
 							E('tr', {}, [
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 0) }, [ _('Node ID') ]),
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 1) }, [ _('Name / Note') ]),
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 2) }, [ _('Assigned IP') ]),
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 3) }, [ _('Connection') ]),
-								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 4) }, [ _('Status') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 4) }, [ _('Latency') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 5) }, [ _('Status') ]),
 								E('th', {}, [ _('Actions') ])
 							])
 						]),
@@ -727,6 +708,7 @@ return view.extend({
 								{ online: true, mode: 'local', latency: -1 } :
 								(peerConnections[memberId] || { online: false, mode: 'offline', latency: -1 });
 							var modeLabel = { direct: 'DIRECT', relay: 'RELAY', local: 'LOCAL', offline: 'OFFLINE' }[connection.mode] || 'OFFLINE';
+							var latencyLabel = connection.online && connection.latency >= 0 ? connection.latency + ' ms' : '—';
 
 							return E('tr', {
 								'data-online': connection.online ? 'true' : 'false',
@@ -756,11 +738,9 @@ return view.extend({
 									})
 								]),
 								E('td', {}, [
-									E('div', { 'class': 'ztc-connection' }, [
-										E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ]),
-										(connection.online && connection.latency >= 0) ? E('span', { 'class': 'ztc-latency' }, [ connection.latency + ' ms' ]) : ''
-									])
+									E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ])
 								]),
+								E('td', { 'class': 'ztc-latency-cell' }, [ latencyLabel ]),
 								E('td', {}, [
 									E('span', { 'class': 'ztc-auth-badge ' + (member.authorized ? 'ztc-auth-authorized' : 'ztc-auth-pending') }, [
 										member.authorized ? _('Authorized') : _('Pending')
@@ -769,7 +749,8 @@ return view.extend({
 								E('td', {}, [
 									E('div', { 'class': 'ztc-member-actions' }, [
 										E('button', {
-											'class': member.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
+											'class': (member.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save') + ' ztc-member-button',
+											'title': member.authorized ? _('Deauth') : _('Authorize'),
 											'click': function(ev) {
 												ev.preventDefault();
 												return callAuthorizeMember(nwid, memberId, !member.authorized).then(requireRpcResult).then(function() {
@@ -778,7 +759,8 @@ return view.extend({
 											}
 										}, [ member.authorized ? _('Deauth') : _('Authorize') ]),
 										E('button', {
-											'class': 'btn cbi-button-remove',
+											'class': 'btn cbi-button-remove ztc-member-button',
+											'title': _('Delete'),
 											'disabled': isController ? 'disabled' : null,
 											'click': function(ev) {
 												ev.preventDefault();
@@ -792,9 +774,64 @@ return view.extend({
 									])
 								])
 							]);
-						}))
+						})),
+						E('tfoot', {}, [
+							E('tr', { 'class': 'ztc-member-editor' }, [
+								E('td', {}, [
+									E('label', { 'for': 'add-nodeid' }, [ _('Node ID (10 chars):') ]),
+									E('input', { 'type': 'text', 'id': 'add-nodeid', 'class': 'ztc-code', 'placeholder': 'bab1e61f17', 'maxlength': 10 })
+								]),
+								E('td', {}, [
+									E('label', { 'for': 'add-name' }, [ _('Name / Note:') ]),
+									E('input', { 'type': 'text', 'id': 'add-name', 'placeholder': _('Optional') })
+								]),
+								E('td', {}, [
+									E('label', { 'for': 'add-ip' }, [ _('Preassigned IP (Optional):') ]),
+									E('input', { 'type': 'text', 'id': 'add-ip', 'class': 'ztc-code', 'placeholder': pool ? pool.ipRangeStart : _('e.g. 10.x.y.z') })
+								]),
+								E('td', { 'class': 'ztc-member-editor-note', 'colspan': 3 }, [
+									E('strong', {}, [ _('Add Member Manually') ]),
+									E('span', {}, [ _('Name and IP are optional. The member is authorized immediately.') ])
+								]),
+								E('td', {}, [
+									E('label', { 'class': 'ztc-editor-action-label', 'aria-hidden': 'true' }, [ _('Actions') ]),
+									E('button', {
+										'class': 'btn cbi-button-save ztc-member-add-button',
+										'click': function(ev) {
+											ev.preventDefault();
+											var nodeid = String(document.getElementById('add-nodeid').value || '').trim().toLowerCase();
+											var name = String(document.getElementById('add-name').value || '').trim();
+											var ip = String(document.getElementById('add-ip').value || '').trim();
+											if (!/^[0-9a-f]{10}$/.test(nodeid)) {
+												showNotification(_('Node ID must be 10 hexadecimal characters.'), 'warning');
+												return;
+											}
+											if (ip && ipv4ToNumber(ip) === null) {
+												showNotification(_('Enter a valid IPv4 address.'), 'warning');
+												return;
+											}
+											return callAuthorizeMember(nwid, nodeid, true)
+												.then(requireRpcResult)
+												.then(function() {
+													var updates = [];
+													if (name)
+														updates.push(callRenameMember(nwid, nodeid, name).then(requireRpcResult));
+													if (ip)
+														updates.push(callChangeMemberIP(nwid, nodeid, [ ip ]).then(requireRpcResult));
+													return Promise.all(updates);
+												})
+												.then(function() {
+													showNotification(_('Member added and authorized.'), 'success');
+													self.loadNetworkDetails(nwid);
+												})
+												.catch(handleRpcError);
+										}
+									}, [ _('Add & Authorize') ])
+								])
+							])
+						])
 					])
-				])
+				]),
 			]),
 			E('div', { 'class': 'cbi-section ztc-card' }, [
 				E('h3', {}, [ _('Routes Configuration') ]),

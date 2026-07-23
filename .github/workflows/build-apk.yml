@@ -1,4 +1,4 @@
-name: Build ImmortalWrt ZeroTier Packages
+name: Build ImmortalWrt LuCI Packages
 
 on:
   push:
@@ -18,9 +18,9 @@ permissions:
 
 jobs:
   build:
-    name: ImmortalWrt 25.12 x86_64
+    name: ImmortalWrt 25.12 x86_64 LuCI
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
 
     steps:
       - name: Checkout source
@@ -44,7 +44,7 @@ jobs:
             libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget \
             curl jq zstd
 
-      - name: Validate Controller source
+      - name: Validate LuCI and rpcd source
         run: |
           sh -n root/usr/libexec/rpcd/zerotier-controller
           sh -n tests/test-rpcd-ip-pool.sh
@@ -80,46 +80,19 @@ jobs:
           mv "$sdk_dir" sdk
           echo "SDK_FILENAME=$sdk_filename" >> "$GITHUB_ENV"
 
-      - name: Install feeds and enable embedded Controller
+      - name: Install LuCI build feeds
         working-directory: sdk
         run: |
-          # Install only ZeroTier and the exact LuCI host-tool sources needed
-          # by the three requested outputs. curl and jq remain runtime APK
-          # dependencies and are intentionally not added to the compile graph.
+          # Install package metadata for runtime dependency resolution and only
+          # the LuCI host tools required to build the application packages.
+          # The ZeroTier daemon and embedded Controller binary are not compiled.
           ./scripts/feeds update base packages luci
           ./scripts/feeds install -p base lua
           ./scripts/feeds install -p packages zerotier luasrcdiet
           ./scripts/feeds install -p luci luci-base csstidy
 
-          zerotier_makefile="feeds/packages/net/zerotier/Makefile"
-          if ! grep -q '^PKG_VERSION:=1\.16\.0$' "$zerotier_makefile" ||
-             ! grep -q '^PKG_RELEASE:=2$' "$zerotier_makefile"; then
-            echo "Expected the ImmortalWrt 25.12 ZeroTier 1.16.0-r2 feed package" >&2
-            grep -E '^(PKG_VERSION|PKG_RELEASE):=' "$zerotier_makefile" >&2
-            exit 1
-          fi
-
-          if grep -q 'ZT_NONFREE=0' "$zerotier_makefile"; then
-            sed -i 's/ZT_NONFREE=0/ZT_NONFREE=1/' "$zerotier_makefile"
-          elif ! grep -q 'ZT_NONFREE=' "$zerotier_makefile"; then
-            sed -i '/^[[:space:]]*ZT_SSO_SUPPORTED=0 \\$/a\	ZT_NONFREE=1 \\' "$zerotier_makefile"
-          fi
-
-          if [ "$(grep -c 'ZT_NONFREE=1' "$zerotier_makefile")" -ne 1 ]; then
-            echo "Failed to enable exactly one ZT_NONFREE=1 build flag" >&2
-            exit 1
-          fi
-
-          sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=100/' "$zerotier_makefile"
-          sed -i 's/^PKG_LICENSE:=.*/PKG_LICENSE:=MPL-2.0 AND LicenseRef-ZeroTier-Source-Available-1.0/' "$zerotier_makefile"
-          sed -i 's|^PKG_LICENSE_FILES:=.*|PKG_LICENSE_FILES:=LICENSE-MPL.txt nonfree/LICENSE.md|' "$zerotier_makefile"
-
-          grep -E '^(PKG_VERSION|PKG_RELEASE|PKG_LICENSE|PKG_LICENSE_FILES)|ZT_NONFREE=' "$zerotier_makefile"
-
       - name: Add LuCI package to SDK
         run: |
-          # The SDK may expose ImmortalWrt's stock package through a feed
-          # symlink. Remove only that link so this unified source wins.
           if [ -L sdk/package/feeds/luci/luci-app-zerotier ]; then
             rm sdk/package/feeds/luci/luci-app-zerotier
           fi
@@ -132,12 +105,9 @@ jobs:
             --exclude='output' \
             ./ sdk/package/luci-app-zerotier/
 
-      - name: Configure packages
+      - name: Configure LuCI packages
         working-directory: sdk
         run: |
-          # The SDK generator preserves every package selected by its buildbot
-          # as an unconditional default in Config-build.in. Remove only those
-          # generated PACKAGE_* stanzas; keep all ABI and toolchain settings.
           embedded_package_defaults="$(awk '/^config PACKAGE_/ { count++ } END { print count + 0 }' Config-build.in)"
           echo "Removing $embedded_package_defaults embedded SDK package defaults"
           sed -i '/^config PACKAGE_/,/^$/d' Config-build.in
@@ -146,31 +116,25 @@ jobs:
             exit 1
           fi
 
-          # Select only the requested packages. defconfig adds their mandatory
-          # build and runtime dependencies.
           printf '%s\n' \
             '# CONFIG_ALL is not set' \
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
             '# CONFIG_AUTOREMOVE is not set' \
-            'CONFIG_PACKAGE_zerotier=m' \
             'CONFIG_PACKAGE_luci-app-zerotier=m' \
             'CONFIG_PACKAGE_luci-i18n-zerotier-zh-cn=m' > .config
           make defconfig
-          echo "Bulk selectors:"
-          grep -E '^(# )?CONFIG_ALL(_(KMODS|NONSHARED))?' .config
 
           if grep -qE '^CONFIG_ALL(_(KMODS|NONSHARED))?=[ym]$' .config; then
             echo "SDK broad package selectors are still enabled" >&2
             exit 1
           fi
-
           if grep -q '^CONFIG_AUTOREMOVE=y$' .config; then
             echo "SDK build directory cleanup is still enabled" >&2
             exit 1
           fi
 
-          for package in zerotier luci-app-zerotier luci-i18n-zerotier-zh-cn; do
+          for package in luci-app-zerotier luci-i18n-zerotier-zh-cn; do
             if ! grep -q "^CONFIG_PACKAGE_${package}=m$" .config; then
               echo "Expected CONFIG_PACKAGE_${package}=m" >&2
               exit 1
@@ -186,26 +150,9 @@ jobs:
           fi
           grep -E '^CONFIG_PACKAGE_.*=[ym]$' .config
 
-          selected_kmods="$(awk '/^CONFIG_PACKAGE_kmod-.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
-          echo "Selected kernel modules ($selected_kmods):"
-          if [ "$selected_kmods" -gt 64 ]; then
-            grep -E '^CONFIG_PACKAGE_kmod-.*=[ym]$' .config | sed -n '1,64p'
-            echo "Refusing broad build: $selected_kmods kernel modules are selected" >&2
-            exit 1
-          fi
-          grep -E '^CONFIG_PACKAGE_kmod-.*=[ym]$' .config || true
-
-      - name: Build Controller-enabled ZeroTier
+      - name: Build LuCI application and Simplified Chinese translation
         working-directory: sdk
         run: |
-          make package/feeds/packages/zerotier/clean
-          make package/feeds/packages/zerotier/compile V=s -j"$(nproc)"
-
-      - name: Build unified LuCI package and Simplified Chinese translation
-        working-directory: sdk
-        run: |
-          # luci-base/host supplies jsmin and po2lmo. Build it explicitly so a
-          # missing host tool fails before packaging either LuCI APK.
           make package/feeds/luci/luci-base/host/compile V=s -j"$(nproc)"
           for tool in jsmin po2lmo; do
             if ! find staging_dir -type f -path "*/bin/$tool" -perm -111 -print -quit | grep -q .; then
@@ -215,8 +162,6 @@ jobs:
           done
 
           make package/luci-app-zerotier/clean
-          # luci.mk emits both the application APK and every selected language
-          # APK from this single source target.
           make package/luci-app-zerotier/compile V=s -j"$(nproc)"
 
       - name: Collect and verify artifacts
@@ -235,33 +180,25 @@ jobs:
             cp "${matches[0]}" output/
           }
 
-          collect_one 'zerotier-[0-9]*.apk' 'ZeroTier'
           collect_one 'luci-app-zerotier-[0-9]*.apk' 'LuCI application'
           collect_one 'luci-i18n-zerotier-zh-cn-[0-9]*.apk' 'Simplified Chinese translation'
 
-          if find output -maxdepth 1 -type f -name '*controller*.apk' | grep -q .; then
-            echo "A legacy standalone Controller package was unexpectedly produced" >&2
+          if find output -maxdepth 1 -type f -name 'zerotier-[0-9]*.apk' | grep -q .; then
+            echo "ZeroTier daemon package must not be part of this LuCI-only build" >&2
             exit 1
           fi
-
-          controller_license="$(find sdk/build_dir -type f -path '*/ZeroTierOne-*/nonfree/LICENSE.md' -print -quit)"
-          if [ -z "$controller_license" ]; then
-            echo "ZeroTier Controller license file not found" >&2
-            exit 1
-          fi
-          cp "$controller_license" output/ZEROTIER-CONTROLLER-LICENSE.md
 
           printf '%s\n' \
             "SDK: $SDK_FILENAME" \
             "SDK source: $SDK_BASE_URL" \
             "Target: ImmortalWrt 25.12 x86/64" \
-            "ZeroTier Controller: ZT_NONFREE=1" \
-            "ZeroTier package release override: r100" \
-            "Packages: zerotier, luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
+            "Build scope: LuCI application and Simplified Chinese translation only" \
+            "ZeroTier daemon/Controller binary: not rebuilt" \
+            "Packages: luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
 
           (
             cd output
-            sha256sum BUILD-INFO.txt ZEROTIER-CONTROLLER-LICENSE.md *.apk > SHA256SUMS
+            sha256sum BUILD-INFO.txt *.apk > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
           ls -lh output
@@ -269,7 +206,7 @@ jobs:
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-25.12-x86_64-zerotier
+          name: immortalwrt-25.12-x86_64-luci-zerotier
           path: output/*
           if-no-files-found: error
 
