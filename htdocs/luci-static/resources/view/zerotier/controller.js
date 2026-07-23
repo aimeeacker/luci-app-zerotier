@@ -107,6 +107,31 @@ function requireRpcResult(res) {
 	return res;
 }
 
+
+function peerConnectionInfo(peer, now) {
+	var paths = Array.isArray(peer && peer.paths) ? peer.paths : [];
+	var activePaths = paths.filter(function(path) {
+		return path && path.active === true;
+	});
+	var timestamps = [ Number(peer && peer.lastReceive) || 0, Number(peer && peer.lastSend) || 0 ];
+	paths.forEach(function(path) {
+		timestamps.push(Number(path && path.lastReceive) || 0, Number(path && path.lastSend) || 0);
+	});
+	var lastActivity = Math.max.apply(Math, timestamps);
+	var latency = Number(peer && peer.latency);
+	if (!isFinite(latency) || latency < 0)
+		latency = -1;
+
+	var direct = activePaths.length > 0;
+	var online = direct || latency >= 0 || lastActivity > (now - 120000);
+
+	return {
+		online: online,
+		mode: direct ? 'direct' : 'relay',
+		latency: latency
+	};
+}
+
 function showNotification(message, type) {
 	var host = document.getElementById('ztc-notifications');
 	if (!host) {
@@ -183,18 +208,21 @@ function parseIPv4CIDR(value) {
 
 function dashboardStyles() {
 	return [
-		'.ztc-dashboard { --ztc-accent: var(--primary-color, #2563eb); --ztc-success: #16a34a; --ztc-danger: #dc2626; --ztc-warning: #d97706; --ztc-radius: 12px; }',
-		'.ztc-dashboard .ztc-hero { display:flex; align-items:center; justify-content:space-between; gap:20px; margin:0 0 18px; padding:22px 24px; overflow:hidden; border-radius:16px; color:#fff; background:linear-gradient(135deg, #172554 0%, #1d4ed8 58%, #0891b2 100%); box-shadow:0 14px 34px rgba(30, 64, 175, .20); }',
-		'.ztc-dashboard .ztc-hero-main { display:flex; align-items:center; gap:16px; min-width:0; }',
-		'.ztc-dashboard .ztc-brandmark { display:grid; place-items:center; flex:0 0 48px; width:48px; height:48px; border:1px solid rgba(255,255,255,.35); border-radius:14px; background:rgba(255,255,255,.14); font-size:17px; font-weight:800; letter-spacing:.06em; backdrop-filter:blur(8px); }',
-		'.ztc-dashboard .ztc-hero h2 { margin:0 0 4px; padding:0; border:0; color:#fff; font-size:clamp(20px, 2.5vw, 28px); }',
-		'.ztc-dashboard .ztc-hero p { margin:0; color:rgba(255,255,255,.82); line-height:1.5; }',
+		'.ztc-dashboard { --ztc-accent:var(--primary-color, #2563eb); --ztc-success:#16a34a; --ztc-danger:#dc2626; --ztc-warning:#d97706; --ztc-radius:12px; font-variant-numeric:tabular-nums; }',
+		'.ztc-dashboard .ztc-hero { display:flex; align-items:center; justify-content:space-between; gap:20px; margin:0 0 16px; padding:20px 22px; overflow:hidden; border-radius:16px; color:#fff; background:linear-gradient(135deg, #172554 0%, #1d4ed8 58%, #0891b2 100%); box-shadow:0 12px 30px rgba(30,64,175,.18); }',
+		'.ztc-dashboard .ztc-hero-main { display:flex; align-items:center; gap:15px; min-width:0; }',
+		'.ztc-dashboard .ztc-brandmark { display:grid; place-items:center; flex:0 0 46px; width:46px; height:46px; border:1px solid rgba(255,255,255,.35); border-radius:13px; background:rgba(255,255,255,.14); font-size:17px; font-weight:800; letter-spacing:.06em; backdrop-filter:blur(8px); }',
+		'.ztc-dashboard .ztc-hero h2 { margin:0 0 3px; padding:0; border:0; color:#fff; font-size:clamp(20px, 2.5vw, 28px); }',
+		'.ztc-dashboard .ztc-hero p { margin:0; color:rgba(255,255,255,.82); line-height:1.45; }',
 		'.ztc-dashboard .ztc-count { flex:0 0 auto; padding:7px 12px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.12); font-weight:600; white-space:nowrap; }',
-		'.ztc-dashboard .ztc-card { margin:0 0 16px; padding:18px; border:1px solid var(--border-color-medium, rgba(100,116,139,.22)); border-radius:var(--ztc-radius); background:var(--background-color-high, rgba(255,255,255,.98)); box-shadow:0 6px 20px rgba(15,23,42,.055); }',
-		'.ztc-dashboard .ztc-card h3 { margin:0 0 14px; padding:0; border:0; font-size:16px; }',
+		'.ztc-dashboard .ztc-card { margin:0 0 15px; padding:16px 17px; border:1px solid var(--border-color-medium, rgba(100,116,139,.22)); border-radius:var(--ztc-radius); background:var(--background-color-high, rgba(255,255,255,.98)); box-shadow:0 5px 18px rgba(15,23,42,.05); }',
+		'.ztc-dashboard .ztc-card h3 { margin:0 0 13px; padding:0; border:0; font-size:16px; }',
+		'.ztc-dashboard .ztc-heading-reset { margin:0 !important; }',
+		'.ztc-dashboard .ztc-subtitle { display:block; margin-top:5px; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.45; }',
 		'.ztc-dashboard .ztc-status-card { display:flex; align-items:center; justify-content:space-between; gap:18px; border-left:4px solid var(--ztc-accent); }',
 		'.ztc-dashboard .ztc-eyebrow { display:block; margin-bottom:5px; color:var(--text-color-medium, #64748b); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }',
-		'.ztc-dashboard .ztc-node-id { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:17px; overflow-wrap:anywhere; }',
+		'.ztc-dashboard .ztc-code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }',
+		'.ztc-dashboard .ztc-node-id { font-size:17px; overflow-wrap:anywhere; }',
 		'.ztc-dashboard .ztc-version { margin-left:8px; color:var(--text-color-medium, #64748b); font-size:12px; }',
 		'.ztc-dashboard .ztc-status-pills { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }',
 		'.ztc-dashboard .ztc-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; color:#fff; font-size:12px; font-weight:700; white-space:nowrap; }',
@@ -203,40 +231,79 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-pill-danger { background:var(--ztc-danger); }',
 		'.ztc-dashboard .ztc-pill-warning { background:var(--ztc-warning); }',
 		'.ztc-dashboard .ztc-error { margin:10px 0 0; padding:9px 11px; border-radius:8px; color:#991b1b; background:rgba(254,226,226,.86); font-size:13px; }',
-		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(245px, 300px) minmax(0, 1fr); gap:18px; align-items:start; }',
+		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(230px, 286px) minmax(0, 1fr); gap:16px; align-items:start; }',
 		'.ztc-dashboard .ztc-sidebar { position:sticky; top:12px; }',
 		'.ztc-dashboard .ztc-network-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }',
-		'.ztc-dashboard .ztc-network-button { width:100%; padding:9px 11px; overflow:hidden; border:1px solid rgba(37,99,235,.20); border-radius:8px; text-align:left; text-overflow:ellipsis; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-network-button { width:100%; padding:9px 11px; overflow:hidden; border:1px solid rgba(37,99,235,.20); border-radius:8px; text-align:left; text-overflow:ellipsis; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-network-button.is-active { border-color:var(--ztc-accent); color:#fff; background:var(--ztc-accent); box-shadow:0 5px 14px rgba(37,99,235,.22); }',
-		'.ztc-dashboard .ztc-empty { display:grid; min-height:150px; place-items:center; padding:24px; border:1px dashed var(--border-color-medium, #cbd5e1); border-radius:var(--ztc-radius); color:var(--text-color-medium, #64748b); text-align:center; }',
-		'.ztc-dashboard .ztc-empty-small { min-height:70px; padding:14px; }',
+		'.ztc-dashboard .ztc-empty { display:grid; min-height:140px; place-items:center; padding:22px; border:1px dashed var(--border-color-medium, #cbd5e1); border-radius:var(--ztc-radius); color:var(--text-color-medium, #64748b); text-align:center; }',
+		'.ztc-dashboard .ztc-empty-small { min-height:64px; padding:13px; }',
 		'.ztc-dashboard .ztc-field { margin:0 0 10px; padding:0; }',
+		'.ztc-dashboard .ztc-full { box-sizing:border-box; width:100%; max-width:none; }',
+		'.ztc-dashboard .ztc-stack-input { margin-bottom:8px; }',
 		'.ztc-dashboard input[type="text"], .ztc-dashboard input[type="file"], .ztc-dashboard select { box-sizing:border-box; max-width:none; border-radius:7px; }',
-		'.ztc-dashboard .ztc-card button { min-height:34px; border-radius:7px; }',
+		'.ztc-dashboard .ztc-card button, .ztc-dashboard .ztc-card .btn { min-height:34px; border-radius:7px; }',
 		'.ztc-dashboard button[disabled] { cursor:not-allowed; opacity:.55; }',
-		'.ztc-dashboard .ztc-overview { display:flex; align-items:center; justify-content:space-between; gap:16px; }',
-		'.ztc-dashboard .ztc-filterbar { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding:11px; border-radius:9px; background:rgba(100,116,139,.08); }',
-		'.ztc-dashboard .ztc-filterfield { display:flex; align-items:center; gap:7px; min-width:180px; }',
-		'.ztc-dashboard .ztc-filterfield-grow { flex:1 1 280px; }',
+		'.ztc-dashboard .ztc-overview { display:flex; align-items:center; justify-content:space-between; gap:14px; }',
+		'.ztc-dashboard .ztc-card-heading { margin-bottom:13px; }',
+		'.ztc-dashboard .ztc-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }',
+		'.ztc-dashboard .ztc-filterbar { display:grid; grid-template-columns:minmax(200px, .55fr) minmax(300px, 1.45fr); gap:12px; margin-bottom:13px; padding:10px; border-radius:9px; background:rgba(100,116,139,.08); }',
+		'.ztc-dashboard .ztc-filterfield { display:flex; align-items:center; gap:7px; min-width:0; }',
+		'.ztc-dashboard .ztc-filterfield label { flex:0 0 auto; }',
+		'.ztc-dashboard .ztc-filterfield select, .ztc-dashboard .ztc-filterfield input { min-width:0; }',
+		'.ztc-dashboard .ztc-filterfield-grow { min-width:0; }',
 		'.ztc-dashboard .ztc-table-wrap { max-height:520px; overflow:auto; border:1px solid var(--border-color-medium, #dbe2ea); border-radius:9px; }',
 		'.ztc-dashboard .ztc-table-wrap table { margin:0; }',
 		'.ztc-dashboard .ztc-table-wrap thead th { position:sticky; top:0; z-index:1; background:var(--background-color-high, #fff); white-space:nowrap; }',
 		'.ztc-dashboard .ztc-table-wrap tbody tr:hover { background:rgba(37,99,235,.045); }',
+		'.ztc-dashboard .ztc-members-table { width:100%; min-width:760px; table-layout:fixed; }',
+		'.ztc-dashboard .ztc-members-table th, .ztc-dashboard .ztc-members-table td { box-sizing:border-box; vertical-align:middle; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(1) { width:12%; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(2) { width:19%; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(3) { width:18%; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(4) { width:14%; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(5) { width:11%; }',
+		'.ztc-dashboard .ztc-members-table th:nth-child(6) { width:26%; }',
+		'.ztc-dashboard .ztc-members-table input { box-sizing:border-box; width:100%; min-width:0; max-width:none; }',
+		'.ztc-dashboard .ztc-table-sort { cursor:pointer; user-select:none; }',
+		'.ztc-dashboard .ztc-table-sort::after { content:"↕"; margin-left:5px; color:var(--text-color-medium, #64748b); font-size:10px; opacity:.65; }',
+		'.ztc-dashboard .ztc-member-id { overflow:hidden; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-connection { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; }',
+		'.ztc-dashboard .ztc-link-mode, .ztc-dashboard .ztc-auth-badge { display:inline-flex; align-items:center; justify-content:center; min-width:58px; padding:3px 7px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.04em; line-height:1.25; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-link-mode::before { content:""; width:6px; height:6px; margin-right:5px; border-radius:50%; background:currentColor; }',
+		'.ztc-dashboard .ztc-link-direct { color:#047857; background:rgba(16,185,129,.14); }',
+		'.ztc-dashboard .ztc-link-relay { color:#b45309; background:rgba(245,158,11,.16); }',
+		'.ztc-dashboard .ztc-link-local { color:#1d4ed8; background:rgba(59,130,246,.14); }',
+		'.ztc-dashboard .ztc-link-offline { color:#64748b; background:rgba(100,116,139,.14); }',
+		'.ztc-dashboard .ztc-latency { color:var(--text-color-medium, #64748b); font-size:11px; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-auth-authorized { color:#fff; background:var(--ztc-success); }',
+		'.ztc-dashboard .ztc-auth-pending { color:#fff; background:#f59e0b; }',
+		'.ztc-dashboard .ztc-member-actions { display:flex; flex-wrap:nowrap; gap:5px; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-member-actions .btn { flex:1 1 auto; min-width:0; padding-left:8px; padding-right:8px; }',
 		'.ztc-dashboard .ztc-form-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }',
 		'.ztc-dashboard .ztc-form-field { flex:1 1 210px; min-width:0; }',
 		'.ztc-dashboard .ztc-form-field label { display:block; margin-bottom:6px; font-weight:600; }',
 		'.ztc-dashboard .ztc-help { margin:7px 0 0; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.5; }',
 		'.ztc-dashboard .ztc-pool-preview { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; padding:10px 12px; border-radius:8px; background:rgba(37,99,235,.07); font-size:12px; }',
-		'.ztc-dashboard .ztc-pool-preview strong { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }',
+		'.ztc-dashboard .ztc-pool-preview strong { font-weight:700; }',
+		'.ztc-dashboard .ztc-route-table { width:100%; margin:0 0 14px; table-layout:fixed; }',
+		'.ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { vertical-align:middle; }',
+		'.ztc-dashboard .ztc-route-table th:last-child, .ztc-dashboard .ztc-route-table td:last-child { width:124px; text-align:right; }',
+		'.ztc-dashboard .ztc-route-table .btn { width:116px; }',
+		'.ztc-dashboard .ztc-route-form { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 124px; gap:12px; align-items:end; }',
+		'.ztc-dashboard .ztc-route-form .ztc-form-field { min-width:0; }',
+		'.ztc-dashboard .ztc-route-form > .btn { width:100%; }',
 		'.ztc-toast-stack { position:fixed; z-index:10000; top:18px; right:18px; display:grid; gap:10px; width:min(390px, calc(100vw - 36px)); pointer-events:none; }',
 		'.ztc-toast { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:13px 14px; border-left:4px solid #2563eb; border-radius:10px; color:#0f172a; background:#fff; box-shadow:0 14px 35px rgba(15,23,42,.22); pointer-events:auto; }',
 		'.ztc-toast-success { border-left-color:var(--ztc-success); }',
 		'.ztc-toast-warning { border-left-color:var(--ztc-warning); }',
 		'.ztc-toast-error { border-left-color:var(--ztc-danger); }',
 		'.ztc-toast-close { min-height:0 !important; padding:0 2px; border:0; color:#64748b; background:transparent; font-size:20px; line-height:1; cursor:pointer; }',
-		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills { justify-content:flex-start; } }',
-		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-form-row > button { width:100%; } }'
-	].join('\n');
+		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills, .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
+		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form > .btn { width:100%; } }',
+		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-form-row > button { width:100%; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
+	].join('
+');
 }
 
 return view.extend({
@@ -295,7 +362,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-section ztc-card ztc-status-card' }, [
 				E('div', {}, [
 					E('span', { 'class': 'ztc-eyebrow' }, [ _('Controller node') ]),
-					E('strong', { 'class': 'ztc-node-id' }, [ status.address || _('Unavailable') ]),
+					E('strong', { 'class': 'ztc-node-id ztc-code' }, [ status.address || _('Unavailable') ]),
 					E('span', { 'class': 'ztc-version' }, [
 						status.version ? 'v' + status.version : ''
 					]),
@@ -324,7 +391,7 @@ return view.extend({
 									var self = this;
 									return E('li', {}, [
 										E('button', {
-											'class': 'btn cbi-button-action ztc-network-button' + (nwid === activeNwid ? ' is-active' : ''),
+											'class': 'btn cbi-button-action ztc-network-button ztc-code' + (nwid === activeNwid ? ' is-active' : ''),
 											'data-nwid': nwid,
 											'click': function(ev) {
 												ev.preventDefault();
@@ -341,10 +408,9 @@ return view.extend({
 					E('div', { 'class': 'cbi-section ztc-card' }, [
 						E('h3', {}, [ _('Create Network') ]),
 						E('div', { 'class': 'cbi-value ztc-field' }, [
-							E('input', { 'type': 'text', 'id': 'new-net-name', 'placeholder': _('Network Name'), 'style': 'width: 100%; margin-bottom: 8px;' }),
+							E('input', { 'type': 'text', 'id': 'new-net-name', 'class': 'ztc-full ztc-stack-input', 'placeholder': _('Network Name') }),
 							E('button', {
-								'class': 'btn cbi-button-save',
-								'style': 'width: 100%;',
+								'class': 'btn cbi-button-save ztc-full',
 								'disabled': controllerReady ? null : 'disabled',
 								'click': function(ev) {
 									ev.preventDefault();
@@ -365,11 +431,10 @@ return view.extend({
 					E('div', { 'class': 'cbi-section ztc-card' }, [
 						E('h3', {}, [ _('Import JSON Backup') ]),
 						E('div', { 'class': 'cbi-value ztc-field' }, [
-							E('input', { 'type': 'file', 'id': 'backup-file-input', 'accept': '.json', 'style': 'width: 100%; margin-bottom: 8px;' }),
+							E('input', { 'type': 'file', 'id': 'backup-file-input', 'class': 'ztc-full ztc-stack-input', 'accept': '.json' }),
 							E('button', {
-								'class': 'btn cbi-button-action',
+								'class': 'btn cbi-button-action ztc-full',
 								'disabled': controllerReady ? null : 'disabled',
-								'style': 'width: 100%;',
 								'click': function(ev) {
 									ev.preventDefault();
 									var fileInput = document.getElementById('backup-file-input');
@@ -428,16 +493,13 @@ return view.extend({
 			var membersMap = (membersRes && membersRes.members) ? membersRes.members : {};
 			var peersMap = (membersRes && Array.isArray(membersRes.peers)) ? membersRes.peers : [];
 			
-			// Build peers lookup table
-			var peerOnline = {};
-			var peerLatency = {};
-			peersMap.forEach(function(p) {
-				if (p && p.address) {
-					var lastActivity = Math.max(Number(p.lastReceive) || 0, Number(p.lastSend) || 0);
-					var hasActivePath = Array.isArray(p.paths) && p.paths.some(function(path) { return path && path.active === true; });
-					peerOnline[p.address] = hasActivePath || lastActivity > (Date.now() - 120000);
-					peerLatency[p.address] = p.latency !== undefined ? p.latency : -1;
-				}
+			// Build one connection record per peer. A reachable peer without an
+			// active physical path is connected through a ZeroTier relay.
+			var peerConnections = {};
+			var now = Date.now();
+			peersMap.forEach(function(peer) {
+				if (peer && peer.address)
+					peerConnections[String(peer.address).toLowerCase()] = peerConnectionInfo(peer, now);
 			});
 
 			var membersList = [];
@@ -448,7 +510,7 @@ return view.extend({
 			}
 
 			panel.innerHTML = '';
-			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerOnline, peerLatency));
+			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerConnections));
 			
 			// Apply default filter: Online Only
 			this.filterMembersTable();
@@ -458,7 +520,7 @@ return view.extend({
 		});
 	},
 
-	renderDashboardContent: function(nwid, netInfo, members, peerOnline, peerLatency) {
+	renderDashboardContent: function(nwid, netInfo, members, peerConnections) {
 		var self = this;
 		var configuredPool = (netInfo.ipAssignmentPools || [])[0] || {};
 		var configuredPoolStart = ipv4ToNumber(configuredPool.ipRangeStart);
@@ -475,8 +537,8 @@ return view.extend({
 			// Network Overview & Backup Actions
 			E('div', { 'class': 'cbi-section ztc-card ztc-overview' }, [
 				E('div', {}, [
-					E('h3', { 'style': 'margin: 0;' }, [ netInfo.name || 'Network', ' (', nwid, ')' ]),
-					E('span', { 'style': 'font-size: 12px; color: #888;' }, [
+					E('h3', { 'class': 'ztc-heading-reset' }, [ netInfo.name || 'Network', ' (', nwid, ')' ]),
+					E('span', { 'class': 'ztc-subtitle' }, [
 						_('IP Pool: '), (netInfo.ipAssignmentPools && netInfo.ipAssignmentPools[0]) ? 
 							(netInfo.ipAssignmentPools[0].ipRangeStart + ' - ' + netInfo.ipAssignmentPools[0].ipRangeEnd) : 'None'
 					])
@@ -513,7 +575,7 @@ return view.extend({
 							'id': 'ip-pool-cidr',
 							'value': currentPoolCidr,
 							'placeholder': '10.16.0.1/24',
-							'style': 'width: 100%;',
+							'class': 'ztc-full ztc-code',
 							'input': function(ev) {
 								var preview = document.getElementById('ip-pool-preview');
 								var parsed = parseIPv4CIDR(ev.target.value);
@@ -559,12 +621,11 @@ return view.extend({
 
 			// Members Card (Default Online Filter + Sorting)
 			E('div', { 'class': 'cbi-section ztc-card' }, [
-				E('div', { 'class': 'ztc-overview', 'style': 'margin-bottom: 14px;' }, [
-					E('h3', { 'style': 'margin: 0;' }, [ _('Network Members ('), members.length, ')' ]),
-					E('div', {}, [
+				E('div', { 'class': 'ztc-overview ztc-card-heading' }, [
+					E('h3', { 'class': 'ztc-heading-reset' }, [ _('Network Members ('), members.length, ')' ]),
+					E('div', { 'class': 'ztc-actions' }, [
 						E('button', {
 							'class': 'btn cbi-button-neutral',
-							'style': 'margin-right: 8px;',
 							'click': function(ev) {
 								ev.preventDefault();
 								self.loadNetworkDetails(nwid);
@@ -586,41 +647,49 @@ return view.extend({
 					]),
 					E('div', { 'class': 'ztc-filterfield ztc-filterfield-grow' }, [
 						E('label', {}, [ _('Search:') ]),
-						E('input', { 'type': 'text', 'id': 'member-search-input', 'placeholder': _('Search Node ID, Name, or IP...'), 'keyup': this.filterMembersTable.bind(this), 'style': 'width: 100%;' })
+						E('input', { 'type': 'text', 'id': 'member-search-input', 'class': 'ztc-full', 'placeholder': _('Search Node ID, Name, or IP...'), 'keyup': this.filterMembersTable.bind(this) })
 					])
 				]),
 
 				// Members Table Container
 				E('div', { 'class': 'ztc-table-wrap' }, [
-					E('table', { 'class': 'table cbi-section-table', 'id': 'members-table' }, [
+					E('table', { 'class': 'table cbi-section-table ztc-members-table', 'id': 'members-table' }, [
 						E('thead', {}, [
 							E('tr', {}, [
-								E('th', { 'click': this.sortMembersTable.bind(this, 0), 'style': 'cursor: pointer;' }, [ _('Node ID') ]),
-								E('th', { 'click': this.sortMembersTable.bind(this, 1), 'style': 'cursor: pointer;' }, [ _('Name / Note') ]),
-								E('th', { 'click': this.sortMembersTable.bind(this, 2), 'style': 'cursor: pointer;' }, [ _('Assigned IP') ]),
-								E('th', { 'click': this.sortMembersTable.bind(this, 3), 'style': 'cursor: pointer;' }, [ _('Connection') ]),
-								E('th', { 'click': this.sortMembersTable.bind(this, 4), 'style': 'cursor: pointer;' }, [ _('Status') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 0) }, [ _('Node ID') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 1) }, [ _('Name / Note') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 2) }, [ _('Assigned IP') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 3) }, [ _('Connection') ]),
+								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 4) }, [ _('Status') ]),
 								E('th', { 'class': 'cbi-section-table-cell' }, [ _('Actions') ])
 							])
 						]),
-						E('tbody', { 'id': 'members-tbody' }, 
+						E('tbody', { 'id': 'members-tbody' },
 							members.map(function(m) {
-								var isController = (m.id === nwid.substring(0, 10));
-								var isOnline = isController || peerOnline[m.id] === true;
-								var latency = peerLatency[m.id] !== undefined ? peerLatency[m.id] : -1;
+								var memberId = String(m.id || '').toLowerCase();
+								var isController = (memberId === nwid.substring(0, 10).toLowerCase());
+								var connection = isController ?
+									{ online: true, mode: 'local', latency: -1 } :
+									(peerConnections[memberId] || { online: false, mode: 'offline', latency: -1 });
+								var modeLabel = {
+									direct: 'DIRECT',
+									relay: 'RELAY',
+									local: 'LOCAL',
+									offline: 'OFFLINE'
+								}[connection.mode] || 'OFFLINE';
 
 								return E('tr', {
-									'data-online': isOnline ? 'true' : 'false',
-									'data-search': (m.id + ' ' + (m.name || '') + ' ' + (m.ipAssignments || []).join(' ')).toLowerCase()
+									'data-online': connection.online ? 'true' : 'false',
+									'data-search': (memberId + ' ' + (m.name || '') + ' ' + (m.ipAssignments || []).join(' ') + ' ' + modeLabel).toLowerCase()
 								}, [
-									E('td', { 'style': 'font-family: monospace; font-weight: bold;' }, [ m.id ]),
+									E('td', { 'class': 'ztc-member-id ztc-code', 'title': memberId }, [ memberId ]),
 									E('td', {}, [
 										E('input', {
 											'type': 'text',
 											'value': m.name || '',
 											'placeholder': _('Set Name'),
 											'change': function(ev) {
-												callRenameMember(nwid, m.id, ev.target.value)
+												callRenameMember(nwid, memberId, ev.target.value)
 													.then(requireRpcResult)
 													.catch(handleRpcError);
 											}
@@ -629,50 +698,53 @@ return view.extend({
 									E('td', {}, [
 										E('input', {
 											'type': 'text',
+											'class': 'ztc-code',
 											'value': (m.ipAssignments || []).join(', '),
 											'placeholder': _('e.g. 10.x.y.z'),
 											'change': function(ev) {
 												var ips = ev.target.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-												callChangeMemberIP(nwid, m.id, ips)
+												callChangeMemberIP(nwid, memberId, ips)
 													.then(requireRpcResult)
 													.catch(handleRpcError);
 											}
 										})
 									]),
 									E('td', {}, [
-										E('span', { 'class': 'badge', 'style': isOnline ? 'color: #10b981;' : 'color: #888;' }, [
-											isOnline ? _('Online ') : _('Offline')
-										]),
-										(isOnline && latency >= 0) ? E('span', { 'style': 'font-size: 11px; margin-left: 4px; color: #666;' }, [ '(' + latency + 'ms)' ]) : ''
-									]),
-									E('td', {}, [
-										E('span', { 'class': 'badge', 'style': m.authorized ? 'background: #10b981; color: #fff; padding: 2px 6px; border-radius: 4px;' : 'background: #f59e0b; color: #fff; padding: 2px 6px; border-radius: 4px;' }, [
-											m.authorized ? _('Authorized') : _('Pending')
+										E('div', { 'class': 'ztc-connection' }, [
+											E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ]),
+											(connection.online && connection.latency >= 0) ?
+												E('span', { 'class': 'ztc-latency' }, [ connection.latency + ' ms' ]) : ''
 										])
 									]),
 									E('td', {}, [
-										E('button', {
-											'class': m.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
-											'style': 'margin-right: 4px;',
-											'click': function(ev) {
-												ev.preventDefault();
-												return callAuthorizeMember(nwid, m.id, !m.authorized).then(requireRpcResult).then(function() {
-													self.loadNetworkDetails(nwid);
-												}).catch(handleRpcError);
-											}
-										}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
-										E('button', {
-											'class': 'btn cbi-button-remove',
-											'disabled': isController ? 'disabled' : null,
-											'click': function(ev) {
-												ev.preventDefault();
-												if (confirm(_('Delete member ') + m.id + '?')) {
-													return callDeleteMember(nwid, m.id).then(requireRpcResult).then(function() {
+										E('span', {
+											'class': 'ztc-auth-badge ' + (m.authorized ? 'ztc-auth-authorized' : 'ztc-auth-pending')
+										}, [ m.authorized ? _('Authorized') : _('Pending') ])
+									]),
+									E('td', {}, [
+										E('div', { 'class': 'ztc-member-actions' }, [
+											E('button', {
+												'class': m.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
+												'click': function(ev) {
+													ev.preventDefault();
+													return callAuthorizeMember(nwid, memberId, !m.authorized).then(requireRpcResult).then(function() {
 														self.loadNetworkDetails(nwid);
 													}).catch(handleRpcError);
 												}
-											}
-										}, [ _('Delete') ])
+											}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
+											E('button', {
+												'class': 'btn cbi-button-remove',
+												'disabled': isController ? 'disabled' : null,
+												'click': function(ev) {
+													ev.preventDefault();
+													if (confirm(_('Delete member ') + memberId + '?')) {
+														return callDeleteMember(nwid, memberId).then(requireRpcResult).then(function() {
+															self.loadNetworkDetails(nwid);
+														}).catch(handleRpcError);
+													}
+												}
+											}, [ _('Delete') ])
+										])
 									])
 								]);
 							})
@@ -687,11 +759,11 @@ return view.extend({
 				E('div', { 'class': 'ztc-form-row' }, [
 					E('div', { 'class': 'ztc-form-field' }, [
 						E('label', {}, [ _('Node ID (10 chars):') ]),
-						E('input', { 'type': 'text', 'id': 'add-nodeid', 'placeholder': 'e.g. bab1e61f17', 'maxlength': 10, 'style': 'width: 100%;' })
+						E('input', { 'type': 'text', 'id': 'add-nodeid', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. bab1e61f17', 'maxlength': 10 })
 					]),
 					E('div', { 'class': 'ztc-form-field' }, [
 						E('label', {}, [ _('Name / Note:') ]),
-						E('input', { 'type': 'text', 'id': 'add-name', 'placeholder': 'e.g. Laptop', 'style': 'width: 100%;' })
+						E('input', { 'type': 'text', 'id': 'add-name', 'class': 'ztc-full', 'placeholder': 'e.g. Laptop' })
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
@@ -718,7 +790,7 @@ return view.extend({
 			// Routes Card
 			E('div', { 'class': 'cbi-section ztc-card' }, [
 				E('h3', {}, [ _('Routes Configuration') ]),
-				E('table', { 'class': 'table cbi-section-table', 'style': 'margin-bottom: 16px;' }, [
+				E('table', { 'class': 'table cbi-section-table ztc-route-table' }, [
 					E('thead', {}, [
 						E('tr', {}, [
 							E('th', {}, [ _('Target CIDR') ]),
@@ -726,11 +798,11 @@ return view.extend({
 							E('th', {}, [ _('Action') ])
 						])
 					]),
-					E('tbody', {}, 
+					E('tbody', {},
 						(netInfo.routes || []).map(function(r) {
 							return E('tr', {}, [
-								E('td', { 'style': 'font-family: monospace;' }, [ r.target ]),
-								E('td', {}, [ r.via || _('Direct') ]),
+								E('td', { 'class': 'ztc-code' }, [ r.target ]),
+								E('td', { 'class': r.via ? 'ztc-code' : '' }, [ r.via || _('Direct') ]),
 								E('td', {}, [
 									E('button', {
 										'class': 'btn cbi-button-remove',
@@ -746,14 +818,14 @@ return view.extend({
 						})
 					)
 				]),
-				E('div', { 'class': 'ztc-form-row' }, [
+				E('div', { 'class': 'ztc-route-form' }, [
 					E('div', { 'class': 'ztc-form-field' }, [
 						E('label', {}, [ _('Target CIDR:') ]),
-						E('input', { 'type': 'text', 'id': 'route-target', 'placeholder': 'e.g. 10.10.0.0/24', 'style': 'width: 100%;' })
+						E('input', { 'type': 'text', 'id': 'route-target', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. 10.10.0.0/24' })
 					]),
 					E('div', { 'class': 'ztc-form-field' }, [
 						E('label', {}, [ _('Via Gateway (Optional):') ]),
-						E('input', { 'type': 'text', 'id': 'route-via', 'placeholder': 'e.g. 10.121.15.1', 'style': 'width: 100%;' })
+						E('input', { 'type': 'text', 'id': 'route-via', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. 10.121.15.1' })
 					]),
 					E('button', {
 						'class': 'btn cbi-button-save',
