@@ -227,8 +227,9 @@ function managedPoolInfo(netInfo) {
 }
 
 function renderNetworkQRCode(nwid) {
+	var url = 'https://joinzt.com/addnetwork?nwid=' + encodeURIComponent(nwid) + '&v=1';
 	var qr = qrcode.create(0, 'M');
-	qr.addData(nwid);
+	qr.addData(url);
 	qr.make();
 
 	var host = E('div', {
@@ -236,7 +237,7 @@ function renderNetworkQRCode(nwid) {
 		'role': 'img',
 		'aria-label': _('Network join QR code')
 	});
-	host.innerHTML = qr.createSvgTag(4, 3, _('Network join QR code'), nwid);
+	host.innerHTML = qr.createSvgTag(4, 3, _('Network join QR code'), url);
 	return host;
 }
 
@@ -268,11 +269,13 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-heading-reset { margin:0 !important; }',
 		'.ztc-dashboard .ztc-subtitle { display:block; margin-top:5px; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.45; }',
 		'.ztc-dashboard .ztc-code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }',
-		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(156px, 186px) minmax(0, 1fr); gap:16px; align-items:start; }',
-		'.ztc-dashboard .ztc-sidebar { position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; padding-right:2px; scrollbar-width:thin; }',
-		'.ztc-dashboard .ztc-sidebar .ztc-card { padding:13px 12px; }',
+		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(0, 186px) minmax(0, 1fr); gap:16px; align-items:start; }',
+		'.ztc-dashboard .ztc-sidebar { min-width:0; width:100%; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow-y:auto; overflow-x:hidden; padding-right:2px; scrollbar-width:thin; }',
+		'.ztc-dashboard .ztc-sidebar .ztc-card { min-width:0; padding:13px 12px; box-sizing:border-box; }',
 		'.ztc-dashboard .ztc-sidebar .ztc-card h3 { font-size:15px; line-height:1.35; }',
-		'.ztc-dashboard .ztc-sidebar input[type="file"] { box-sizing:border-box; width:100%; overflow:hidden; font-size:11px; }',
+		'.ztc-dashboard .ztc-sidebar .ztc-field { min-width:0; max-width:100%; overflow:hidden; }',
+		'.ztc-dashboard .ztc-sidebar input[type="file"] { box-sizing:border-box; width:100%; max-width:100%; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-sidebar input[type="file"]::file-selector-button, .ztc-dashboard .ztc-sidebar input[type="file"]::-webkit-file-upload-button { max-width:100%; padding:2px 5px; font-size:11px; overflow:hidden; text-overflow:ellipsis; }',
 		'.ztc-dashboard .ztc-network-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }',
 		'.ztc-dashboard .ztc-network-button { display:flex; width:100%; padding:9px 11px; overflow:hidden; flex-direction:column; align-items:flex-start; gap:3px; border:1px solid rgba(37,99,235,.20); border-radius:8px; text-align:left; }',
 		'.ztc-dashboard .ztc-network-name { display:block; width:100%; overflow:hidden; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }',
@@ -288,10 +291,13 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-card button, .ztc-dashboard .ztc-card .btn { min-height:34px; border-radius:7px; }',
 		'.ztc-dashboard button[disabled] { cursor:not-allowed; opacity:.55; }',
 		'.ztc-dashboard .ztc-overview { display:flex; align-items:center; justify-content:space-between; gap:14px; }',
-		'.ztc-dashboard .ztc-network-overview { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:18px; }',
-		'.ztc-dashboard .ztc-network-share { display:flex; align-items:center; justify-content:flex-end; gap:12px; }',
-		'.ztc-dashboard .ztc-qr-block { display:flex; align-items:center; gap:10px; padding:8px 10px 8px 8px; border:1px solid var(--border-color-medium, rgba(100,116,139,.22)); border-radius:10px; background:rgba(100,116,139,.045); }',
-		'.ztc-dashboard .ztc-qr-image { box-sizing:border-box; flex:0 0 112px; width:112px; height:112px; padding:5px; border-radius:8px; background:#fff; box-shadow:0 2px 10px rgba(15,23,42,.12); }',
+		'.ztc-dashboard .ztc-network-overview { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:20px; }',
+		'.ztc-dashboard .ztc-network-info { display:flex; flex-direction:column; gap:3px; min-width:0; }',
+		'.ztc-dashboard .ztc-network-info h3 { margin:0 0 2px; padding:0; font-size:18px; font-weight:700; line-height:1.3; }',
+		'.ztc-dashboard .ztc-network-info .ztc-subtitle { display:block; color:var(--text-color-medium, #64748b); font-size:12px; }',
+		'.ztc-dashboard .ztc-network-info .ztc-qr-desc { display:block; margin-top:3px; color:var(--text-color-medium, #64748b); font-size:11px; }',
+		'.ztc-dashboard .ztc-network-actions { display:flex; align-items:center; justify-content:flex-end; }',
+		'.ztc-dashboard .ztc-qr-image { box-sizing:border-box; flex:0 0 108px; width:108px; height:108px; padding:4px; border:1px solid var(--border-color-medium, rgba(100,116,139,.2)); border-radius:10px; background:#fff; box-shadow:0 2px 8px rgba(15,23,42,.08); }',
 		'.ztc-dashboard .ztc-qr-image svg { display:block; width:100%; height:100%; }',
 		'.ztc-dashboard .ztc-qr-copy { max-width:160px; color:var(--text-color-medium, #64748b); font-size:11px; line-height:1.45; }',
 		'.ztc-dashboard .ztc-qr-copy strong { display:block; margin-bottom:4px; color:var(--text-color-high, inherit); font-size:12px; }',
@@ -365,9 +371,9 @@ function dashboardStyles() {
 		'.ztc-toast-warning { border-left-color:var(--ztc-warning); }',
 		'.ztc-toast-error { border-left-color:var(--ztc-danger); }',
 		'.ztc-toast-close { min-height:0 !important; padding:0 2px; border:0; color:#64748b; background:transparent; font-size:20px; line-height:1; cursor:pointer; }',
-		'@media (max-width: 900px) { .ztc-dashboard .ztc-hero { grid-template-columns:1fr; } .ztc-dashboard .ztc-controller-side { align-items:flex-start; } .ztc-dashboard .ztc-status-pills { justify-content:flex-start; } .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; max-height:none; overflow:visible; padding-right:0; } .ztc-dashboard .ztc-sidebar .ztc-card { padding:16px 17px; } .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-network-overview { grid-template-columns:1fr; } .ztc-dashboard .ztc-network-share { justify-content:flex-start; } .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
+		'@media (max-width: 900px) { .ztc-dashboard .ztc-hero { grid-template-columns:1fr; } .ztc-dashboard .ztc-controller-side { align-items:flex-start; } .ztc-dashboard .ztc-status-pills { justify-content:flex-start; } .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; max-height:none; overflow:visible; padding-right:0; } .ztc-dashboard .ztc-sidebar .ztc-card { padding:16px 17px; } .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-network-overview { grid-template-columns:1fr; gap:14px; } .ztc-dashboard .ztc-network-actions { justify-content:flex-start; } .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
 		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } }',
-		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } .ztc-dashboard .ztc-network-share { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-qr-block { width:100%; box-sizing:border-box; } }'
+		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
 	].join('\n');
 }
 
@@ -652,22 +658,18 @@ return view.extend({
 
 		return E('div', { 'class': 'ztc-network-content' }, [
 			E('div', { 'class': 'cbi-section ztc-card ztc-network-overview' }, [
-				E('div', {}, [
+				renderNetworkQRCode(nwid),
+				E('div', { 'class': 'ztc-network-info' }, [
 					E('h3', { 'class': 'ztc-heading-reset' }, [ netInfo.name || _('Unnamed Network') ]),
 					E('span', { 'class': 'ztc-subtitle ztc-code' }, [ nwid ]),
 					E('span', { 'class': 'ztc-subtitle' }, [
 						_('IP Pool: '), pool ? (pool.ipRangeStart + ' - ' + pool.ipRangeEnd) : _('None')
+					]),
+					E('span', { 'class': 'ztc-qr-desc' }, [
+						_('Scan with the ZeroTier app to join this network.')
 					])
 				]),
-				E('div', { 'class': 'ztc-network-share' }, [
-					E('div', { 'class': 'ztc-qr-block' }, [
-						renderNetworkQRCode(nwid),
-						E('div', { 'class': 'ztc-qr-copy' }, [
-							E('strong', {}, [ _('Scan to join') ]),
-							E('span', {}, [ _('Scan with the ZeroTier app to join this network.') ]),
-							E('span', { 'class': 'ztc-qr-network-id ztc-code' }, [ _('Network ID') + ': ', nwid ])
-						])
-					]),
+				E('div', { 'class': 'ztc-network-actions' }, [
 					E('button', {
 						'class': 'btn cbi-button-action',
 						'click': function(ev) {
