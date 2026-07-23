@@ -51,7 +51,7 @@ jobs:
           sh -n tests/fixtures/mock-curl
           node --check htdocs/luci-static/resources/view/zerotier/controller.js
           node --check htdocs/luci-static/resources/zerotier/qrcode.js
-          node -e 'const fs=require("fs"); const source=fs.readFileSync("htdocs/luci-static/resources/zerotier/qrcode.js","utf8"); const qrFactory=new Function(source)(); const qr=qrFactory(0,"M"); qr.addData("4ab50a5631fd3edd"); qr.make(); const svg=qr.createSvgTag(4,3); if (!svg.includes("<svg") || qr.getModuleCount()<21) throw new Error("QR generator validation failed");'
+          node -e 'const fs=require("fs"); const source=fs.readFileSync("htdocs/luci-static/resources/zerotier/qrcode.js","utf8"); const baseClass={extend: function(obj){ return obj; }}; const mod=new Function("L", "baseClass", source)(null, baseClass); const qr=mod.create(0,"M"); qr.addData("4ab50a5631fd3edd"); qr.make(); const svg=qr.createSvgTag(4,3); if (!svg.includes("<svg") || qr.getModuleCount()<21) throw new Error("QR generator validation failed");'
           jq -e . root/usr/share/rpcd/acl.d/luci-app-zerotier.json >/dev/null
           msgfmt --check --check-format -o /dev/null po/zh_Hans/zerotier.po
           tests/test-rpcd-ip-pool.sh

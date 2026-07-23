@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 'use strict';
+'require baseClass';
 
 //---------------------------------------------------------------------
 //
@@ -2289,4 +2290,8 @@ var qrcode = function() {
 
 }();
 
-return qrcode;
+return baseClass.extend({
+	create: function(typeNumber, errorCorrectionLevel) {
+		return qrcode(typeNumber, errorCorrectionLevel);
+	}
+});

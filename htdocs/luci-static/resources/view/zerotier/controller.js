@@ -227,7 +227,7 @@ function managedPoolInfo(netInfo) {
 }
 
 function renderNetworkQRCode(nwid) {
-	var qr = qrcode(0, 'M');
+	var qr = qrcode.create(0, 'M');
 	qr.addData(nwid);
 	qr.make();
 
