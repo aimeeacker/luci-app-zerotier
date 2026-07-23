@@ -13,6 +13,26 @@ export PATH="$zt_test_bin:$PATH"
 export ZT_CONTROLLER_TOKEN=test-token
 export ZT_TEST_PAYLOAD="$zt_test_payload"
 
+zt_networks="$(printf '%s\n' '{}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call list_networks)"
+printf '%s' "$zt_networks" | jq -e '
+	.networks == [{"id":"8056c2e21c000001","name":"home_zj"}]
+' >/dev/null
+
+zt_created="$(printf '%s\n' '{"name":"lab","cidr":"10.42.7.9/24"}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call create_network)"
+printf '%s' "$zt_created" | jq -e '.id == "8056c2e21c000002"' >/dev/null
+jq -e '
+	.name == "lab" and
+	.v4AssignMode.zt == true and
+	.ipAssignmentPools == [{"ipRangeStart":"10.42.7.1","ipRangeEnd":"10.42.7.254"}] and
+	.routes == [{"target":"10.42.7.0/24","via":null}]
+' "$zt_test_payload" >/dev/null
+
+zt_create_invalid="$(printf '%s\n' '{"name":"invalid","cidr":"10.42.7.0/31"}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call create_network)"
+printf '%s' "$zt_create_invalid" | jq -e '.error | contains("/8 and /30")' >/dev/null
+
 zt_result="$(printf '%s\n' '{"nwid":"8056c2e21c000001","cidr":"10.16.0.1/24","old_cidr":"10.10.10.0/24"}' |
 	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call update_ip_pool)"
 
@@ -35,4 +55,4 @@ zt_invalid="$(printf '%s\n' '{"nwid":"8056c2e21c000001","cidr":"10.16.0.1/31","o
 	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call update_ip_pool)"
 printf '%s' "$zt_invalid" | jq -e '.error | contains("/8 and /30")' >/dev/null
 
-echo 'rpcd IP pool tests passed'
+echo 'rpcd Controller tests passed'

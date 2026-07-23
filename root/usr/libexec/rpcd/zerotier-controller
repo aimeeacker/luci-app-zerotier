@@ -159,7 +159,7 @@ case "$1" in
 		echo '  "status": {},'
 		echo '  "list_networks": {},'
 		echo '  "get_network_info": { "nwid": "string" },'
-		echo '  "create_network": { "name": "string" },'
+		echo '  "create_network": { "name": "string", "cidr": "string" },'
 		echo '  "update_ip_pool": { "nwid": "string", "cidr": "string", "old_cidr": "string" },'
 		echo '  "list_members": { "nwid": "string" },'
 		echo '  "authorize_member": { "nwid": "string", "nodeid": "string", "authorized": "boolean" },'
@@ -197,10 +197,33 @@ case "$1" in
 				res="$(zt_api GET /controller/network)"
 				if has_error "$res"; then
 					printf '%s' "$res" | jq -c '. + { networks: [] }'
-				elif printf '%s' "$res" | jq -e 'type == "array"' >/dev/null 2>&1; then
-					printf '%s' "$res" | jq -c '{ networks: . }'
 				else
-					json_error "Controller network list has an unexpected format" GET /controller/network 200 | jq -c '. + { networks: [] }'
+					network_ids="$(printf '%s' "$res" | jq -r '
+						if type == "array" then .[]?
+						elif type == "object" then keys[]?
+						else empty
+						end
+						| if type == "string" then .
+						  elif type == "object" then (.id // .nwid // empty)
+						  else empty
+						  end
+					' 2>/dev/null)"
+					networks='[]'
+					for nwid in $network_ids; do
+						valid_nwid "$nwid" || continue
+						net_detail="$(zt_api GET "/controller/network/$nwid")"
+						if has_error "$net_detail"; then
+							name=''
+						else
+							name="$(printf '%s' "$net_detail" | jq -r '(.name // "") | tostring')"
+						fi
+						networks="$(jq -cn \
+							--argjson networks "$networks" \
+							--arg id "$nwid" \
+							--arg name "$name" \
+							'$networks + [{ id: $id, name: $name }]')"
+					done
+					jq -cn --argjson networks "$networks" '{ networks: $networks }'
 				fi
 				;;
 			get_network_info)
@@ -215,21 +238,31 @@ case "$1" in
 			create_network)
 				if ! read_rpc_input create_network; then exit 0; fi
 				name="$(printf '%s' "$input" | jq -r '(.name // "network") | tostring')"
+				cidr="$(printf '%s' "$input" | jq -r '(.cidr // "") | tostring')"
 
-				# Generate random 10.x.y.0/24 subnet
-				rand_x_seed="$(od -An -N1 -tu1 /dev/urandom 2>/dev/null | tr -d ' ')"
-				rand_y_seed="$(od -An -N1 -tu1 /dev/urandom 2>/dev/null | tr -d ' ')"
-				case "$rand_x_seed" in *[!0-9]*|'') rand_x_seed=120 ;; esac
-				case "$rand_y_seed" in *[!0-9]*|'') rand_y_seed=50 ;; esac
-				rand_x="$(( (rand_x_seed % 120) + 100 ))"
-				rand_y="$(( (rand_y_seed % 250) + 1 ))"
-				subnet="10.${rand_x}.${rand_y}"
+				# Keep backward compatibility for callers that omit CIDR while allowing
+				# the LuCI form to create a network with an explicit managed subnet.
+				if [ -z "$cidr" ]; then
+					rand_x_seed="$(od -An -N1 -tu1 /dev/urandom 2>/dev/null | tr -d ' ')"
+					rand_y_seed="$(od -An -N1 -tu1 /dev/urandom 2>/dev/null | tr -d ' ')"
+					case "$rand_x_seed" in *[!0-9]*|'') rand_x_seed=120 ;; esac
+					case "$rand_y_seed" in *[!0-9]*|'') rand_y_seed=50 ;; esac
+					rand_x="$(( (rand_x_seed % 120) + 100 ))"
+					rand_y="$(( (rand_y_seed % 250) + 1 ))"
+					cidr="10.${rand_x}.${rand_y}.0/24"
+				fi
 
+				if ! parse_ipv4_cidr "$cidr"; then
+					echo '{"error": "IPv4 CIDR must use a prefix between /8 and /30"}'
+					exit 0
+				fi
+
+				normalized_cidr="${CIDR_NETWORK}/${CIDR_PREFIX}"
 				payload="$(jq -cn \
 					--arg name "$name" \
-					--arg ip_start "${subnet}.1" \
-					--arg ip_end "${subnet}.254" \
-					--arg route "${subnet}.0/24" \
+					--arg ip_start "$CIDR_FIRST" \
+					--arg ip_end "$CIDR_LAST" \
+					--arg route "$normalized_cidr" \
 					'{ name: $name, private: true, v4AssignMode: { zt: true }, ipAssignmentPools: [{ ipRangeStart: $ip_start, ipRangeEnd: $ip_end }], routes: [{ target: $route, via: null }] }')"
 				zt_api POST /controller/network "$payload"
 				;;

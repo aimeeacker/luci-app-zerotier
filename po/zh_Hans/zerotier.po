@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: luci-app-zerotier\n"
-"PO-Revision-Date: 2026-07-22 16:00+0800\n"
+"PO-Revision-Date: 2026-07-23 21:30+0800\n"
 "Last-Translator: Aimee <aimee@github.com>\n"
 "Language-Team: Chinese Simplified\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -398,3 +398,24 @@ msgstr "个网络"
 
 msgid "networks"
 msgstr "个网络"
+
+msgid "Member added and authorized."
+msgstr "成员已添加并授权。"
+
+msgid "Network Name:"
+msgstr "网络名称："
+
+msgid "No routes configured."
+msgstr "尚未配置路由。"
+
+msgid "Node ID must be 10 hexadecimal characters."
+msgstr "节点 ID 必须为 10 位十六进制字符。"
+
+msgid "None"
+msgstr "无"
+
+msgid "Target CIDR is required."
+msgstr "目标 CIDR 不能为空。"
+
+msgid "Unnamed Network"
+msgstr "未命名网络"

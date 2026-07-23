@@ -25,7 +25,7 @@ var callGetNetworkInfo = rpc.declare({
 var callCreateNetwork = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'create_network',
-	params: [ 'name' ]
+	params: [ 'name', 'cidr' ]
 });
 
 var callUpdateIPPool = rpc.declare({
@@ -127,7 +127,7 @@ function peerConnectionInfo(peer, now) {
 
 	return {
 		online: online,
-		mode: direct ? 'direct' : 'relay',
+		mode: direct ? 'direct' : (online ? 'relay' : 'offline'),
 		latency: latency
 	};
 }
@@ -206,6 +206,25 @@ function parseIPv4CIDR(value) {
 	};
 }
 
+
+function managedPoolInfo(netInfo) {
+	var configuredPool = (netInfo.ipAssignmentPools || [])[0] || {};
+	var configuredPoolStart = ipv4ToNumber(configuredPool.ipRangeStart);
+	var directIPv4Route = (netInfo.routes || []).find(function(route) {
+		var parsedRoute = route && !route.via ? parseIPv4CIDR(route.target) : null;
+		return parsedRoute && configuredPoolStart !== null &&
+			configuredPoolStart >= parsedRoute.networkNumber && configuredPoolStart <= parsedRoute.broadcastNumber;
+	}) || (netInfo.routes || []).find(function(route) {
+		return route && !route.via && parseIPv4CIDR(route.target);
+	});
+	var cidr = directIPv4Route ? directIPv4Route.target : '';
+
+	return {
+		cidr: cidr,
+		parsed: parseIPv4CIDR(cidr)
+	};
+}
+
 function dashboardStyles() {
 	return [
 		'.ztc-dashboard { --ztc-accent:var(--primary-color, #2563eb); --ztc-success:#16a34a; --ztc-danger:#dc2626; --ztc-warning:#d97706; --ztc-radius:12px; font-variant-numeric:tabular-nums; }',
@@ -231,22 +250,29 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-pill-danger { background:var(--ztc-danger); }',
 		'.ztc-dashboard .ztc-pill-warning { background:var(--ztc-warning); }',
 		'.ztc-dashboard .ztc-error { margin:10px 0 0; padding:9px 11px; border-radius:8px; color:#991b1b; background:rgba(254,226,226,.86); font-size:13px; }',
-		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(230px, 286px) minmax(0, 1fr); gap:16px; align-items:start; }',
-		'.ztc-dashboard .ztc-sidebar { position:sticky; top:12px; }',
+		'.ztc-dashboard .ztc-layout { display:grid; grid-template-columns:minmax(260px, 310px) minmax(0, 1fr); gap:16px; align-items:start; }',
+		'.ztc-dashboard .ztc-sidebar { position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; padding-right:2px; scrollbar-width:thin; }',
 		'.ztc-dashboard .ztc-network-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }',
-		'.ztc-dashboard .ztc-network-button { width:100%; padding:9px 11px; overflow:hidden; border:1px solid rgba(37,99,235,.20); border-radius:8px; text-align:left; text-overflow:ellipsis; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-network-button { display:flex; width:100%; padding:9px 11px; overflow:hidden; flex-direction:column; align-items:flex-start; gap:3px; border:1px solid rgba(37,99,235,.20); border-radius:8px; text-align:left; }',
+		'.ztc-dashboard .ztc-network-name { display:block; width:100%; overflow:hidden; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-network-id { display:block; width:100%; overflow:hidden; color:var(--text-color-medium, #64748b); font-size:11px; font-weight:500; text-overflow:ellipsis; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-network-button.is-active { border-color:var(--ztc-accent); color:#fff; background:var(--ztc-accent); box-shadow:0 5px 14px rgba(37,99,235,.22); }',
+		'.ztc-dashboard .ztc-network-button.is-active .ztc-network-id { color:rgba(255,255,255,.78); }',
 		'.ztc-dashboard .ztc-empty { display:grid; min-height:140px; place-items:center; padding:22px; border:1px dashed var(--border-color-medium, #cbd5e1); border-radius:var(--ztc-radius); color:var(--text-color-medium, #64748b); text-align:center; }',
 		'.ztc-dashboard .ztc-empty-small { min-height:64px; padding:13px; }',
 		'.ztc-dashboard .ztc-field { margin:0 0 10px; padding:0; }',
 		'.ztc-dashboard .ztc-full { box-sizing:border-box; width:100%; max-width:none; }',
-		'.ztc-dashboard .ztc-stack-input { margin-bottom:8px; }',
+		'.ztc-dashboard .ztc-stack-input { margin-bottom:9px; }',
 		'.ztc-dashboard input[type="text"], .ztc-dashboard input[type="file"], .ztc-dashboard select { box-sizing:border-box; max-width:none; border-radius:7px; }',
 		'.ztc-dashboard .ztc-card button, .ztc-dashboard .ztc-card .btn { min-height:34px; border-radius:7px; }',
 		'.ztc-dashboard button[disabled] { cursor:not-allowed; opacity:.55; }',
 		'.ztc-dashboard .ztc-overview { display:flex; align-items:center; justify-content:space-between; gap:14px; }',
 		'.ztc-dashboard .ztc-card-heading { margin-bottom:13px; }',
 		'.ztc-dashboard .ztc-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }',
+		'.ztc-dashboard .ztc-sidebar-form { display:grid; gap:9px; }',
+		'.ztc-dashboard .ztc-sidebar-form label { display:block; margin-bottom:5px; font-size:12px; font-weight:700; }',
+		'.ztc-dashboard .ztc-sidebar-preview { padding:9px 10px; border-radius:8px; color:var(--text-color-medium, #64748b); background:rgba(37,99,235,.07); font-size:11px; line-height:1.45; overflow-wrap:anywhere; }',
+		'.ztc-dashboard .ztc-help { margin:7px 0 0; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.5; }',
 		'.ztc-dashboard .ztc-filterbar { display:grid; grid-template-columns:minmax(200px, .55fr) minmax(300px, 1.45fr); gap:12px; margin-bottom:13px; padding:10px; border-radius:9px; background:rgba(100,116,139,.08); }',
 		'.ztc-dashboard .ztc-filterfield { display:flex; align-items:center; gap:7px; min-width:0; }',
 		'.ztc-dashboard .ztc-filterfield label { flex:0 0 auto; }',
@@ -280,28 +306,33 @@ function dashboardStyles() {
 		'.ztc-dashboard .ztc-auth-pending { color:#fff; background:#f59e0b; }',
 		'.ztc-dashboard .ztc-member-actions { display:flex; flex-wrap:nowrap; gap:5px; white-space:nowrap; }',
 		'.ztc-dashboard .ztc-member-actions .btn { flex:1 1 auto; min-width:0; padding-left:8px; padding-right:8px; }',
-		'.ztc-dashboard .ztc-form-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }',
-		'.ztc-dashboard .ztc-form-field { flex:1 1 210px; min-width:0; }',
-		'.ztc-dashboard .ztc-form-field label { display:block; margin-bottom:6px; font-weight:600; }',
-		'.ztc-dashboard .ztc-help { margin:7px 0 0; color:var(--text-color-medium, #64748b); font-size:12px; line-height:1.5; }',
-		'.ztc-dashboard .ztc-pool-preview { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; padding:10px 12px; border-radius:8px; background:rgba(37,99,235,.07); font-size:12px; }',
-		'.ztc-dashboard .ztc-pool-preview strong { font-weight:700; }',
-		'.ztc-dashboard .ztc-route-table { width:100%; margin:0 0 14px; table-layout:fixed; }',
-		'.ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { vertical-align:middle; }',
-		'.ztc-dashboard .ztc-route-table th:last-child, .ztc-dashboard .ztc-route-table td:last-child { width:124px; text-align:right; }',
-		'.ztc-dashboard .ztc-route-table .btn { width:116px; }',
-		'.ztc-dashboard .ztc-route-form { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 124px; gap:12px; align-items:end; }',
-		'.ztc-dashboard .ztc-route-form .ztc-form-field { min-width:0; }',
-		'.ztc-dashboard .ztc-route-form > .btn { width:100%; }',
+		'.ztc-dashboard .ztc-route-wrap { overflow-x:auto; border:1px solid var(--border-color-medium, #dbe2ea); border-radius:9px; }',
+		'.ztc-dashboard .ztc-route-table { display:table !important; width:100%; min-width:680px; margin:0; table-layout:fixed; border-collapse:collapse; border-spacing:0; }',
+		'.ztc-dashboard .ztc-route-table thead { display:table-header-group !important; }',
+		'.ztc-dashboard .ztc-route-table tbody { display:table-row-group !important; }',
+		'.ztc-dashboard .ztc-route-table tfoot { display:table-footer-group !important; }',
+		'.ztc-dashboard .ztc-route-table tr { display:table-row !important; }',
+		'.ztc-dashboard .ztc-route-table th, .ztc-dashboard .ztc-route-table td { display:table-cell !important; box-sizing:border-box; padding:9px 10px !important; vertical-align:middle !important; text-align:left !important; }',
+		'.ztc-dashboard .ztc-route-table th { color:var(--text-color-high, inherit); background:rgba(100,116,139,.08); font-weight:700; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-route-table tbody td { border-top:1px solid var(--border-color-medium, rgba(100,116,139,.18)); }',
+		'.ztc-dashboard .ztc-route-table tfoot td { border-top:1px solid var(--border-color-medium, rgba(100,116,139,.25)); background:rgba(100,116,139,.035); }',
+		'.ztc-dashboard .ztc-route-target-col { width:42%; }',
+		'.ztc-dashboard .ztc-route-via-col { width:38%; }',
+		'.ztc-dashboard .ztc-route-action-col { width:20%; }',
+		'.ztc-dashboard .ztc-route-table label { display:block; margin-bottom:6px; font-weight:700; white-space:nowrap; }',
+		'.ztc-dashboard .ztc-route-table input { box-sizing:border-box; width:100%; min-width:0; max-width:none; }',
+		'.ztc-dashboard .ztc-route-table .ztc-route-button { width:100%; }',
+		'.ztc-dashboard .ztc-route-action-label { visibility:hidden; }',
+		'.ztc-dashboard .ztc-route-empty { color:var(--text-color-medium, #64748b); }',
 		'.ztc-toast-stack { position:fixed; z-index:10000; top:18px; right:18px; display:grid; gap:10px; width:min(390px, calc(100vw - 36px)); pointer-events:none; }',
 		'.ztc-toast { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:13px 14px; border-left:4px solid #2563eb; border-radius:10px; color:#0f172a; background:#fff; box-shadow:0 14px 35px rgba(15,23,42,.22); pointer-events:auto; }',
 		'.ztc-toast-success { border-left-color:var(--ztc-success); }',
 		'.ztc-toast-warning { border-left-color:var(--ztc-warning); }',
 		'.ztc-toast-error { border-left-color:var(--ztc-danger); }',
 		'.ztc-toast-close { min-height:0 !important; padding:0 2px; border:0; color:#64748b; background:transparent; font-size:20px; line-height:1; cursor:pointer; }',
-		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills, .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
-		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form > .btn { width:100%; } }',
-		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-form-row > button { width:100%; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
+		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; max-height:none; overflow:visible; padding-right:0; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills, .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
+		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } }',
+		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
 	].join('\n');
 }
 
@@ -324,24 +355,25 @@ return view.extend({
 	render: function(data) {
 		var status = data[0] || {};
 		var networksData = data[1] || {};
-		
 		var controllerReady = status.controller === true && status.databaseReady !== false;
 		var controllerProblem = (status.error || status.controllerError) ? rpcErrorMessage(status) :
 			(networksData.error ? rpcErrorMessage(networksData) : null);
 		if (status.controllerHttpStatus === 404)
 			controllerProblem = _('This ZeroTier build does not include the embedded Controller API.') + ' (HTTP 404)';
-		var networks = [];
-		if (Array.isArray(networksData)) {
-			networks = networksData;
-		} else if (networksData && Array.isArray(networksData.networks)) {
-			networks = networksData.networks;
-		}
+
+		var networks = Array.isArray(networksData) ? networksData :
+			(networksData && Array.isArray(networksData.networks) ? networksData.networks : []);
 		networks = networks.map(function(network) {
-			return (typeof network === 'string') ? network : (network.id || network.nwid || '');
-		}).filter(function(nwid) {
-			return /^[0-9a-f]{16}$/i.test(nwid);
+			var id = (typeof network === 'string') ? network : (network.id || network.nwid || '');
+			return {
+				id: id,
+				name: (typeof network === 'object' && network) ? String(network.name || '') : ''
+			};
+		}).filter(function(network) {
+			return /^[0-9a-f]{16}$/i.test(network.id);
 		});
-		var activeNwid = networks.length > 0 ? networks[0] : null;
+		var activeNwid = networks.length > 0 ? networks[0].id : null;
+		var self = this;
 
 		var viewContainer = E('div', { 'class': 'cbi-map ztc-dashboard' }, [
 			E('style', {}, [ dashboardStyles() ]),
@@ -356,15 +388,11 @@ return view.extend({
 				]),
 				E('span', { 'class': 'ztc-count' }, [ networks.length, ' ', networks.length === 1 ? _('network') : _('networks') ])
 			]),
-
-			// Controller Status Card
 			E('div', { 'class': 'cbi-section ztc-card ztc-status-card' }, [
 				E('div', {}, [
 					E('span', { 'class': 'ztc-eyebrow' }, [ _('Controller node') ]),
 					E('strong', { 'class': 'ztc-node-id ztc-code' }, [ status.address || _('Unavailable') ]),
-					E('span', { 'class': 'ztc-version' }, [
-						status.version ? 'v' + status.version : ''
-					]),
+					E('span', { 'class': 'ztc-version' }, [ status.version ? 'v' + status.version : '' ]),
 					controllerProblem ? E('p', { 'class': 'ztc-error' }, [ controllerProblem ]) : ''
 				]),
 				E('div', { 'class': 'ztc-status-pills' }, [
@@ -376,45 +404,56 @@ return view.extend({
 					])
 				])
 			]),
-
-			// Main Dashboard Layout Grid
 			E('div', { 'class': 'ztc-layout' }, [
-				// Sidebar
 				E('aside', { 'class': 'ztc-sidebar' }, [
-					// Network List Card
 					E('div', { 'class': 'cbi-section ztc-card' }, [
 						E('h3', {}, [ _('Managed Networks') ]),
 						E('div', { 'id': 'network-list-box' }, [
-							networks.length === 0 ? E('p', { 'class': 'ztc-empty ztc-empty-small' }, [ _('No networks created yet.') ]) : E('ul', { 'class': 'ztc-network-list' },
-								networks.map(function(nwid) {
-									var self = this;
+							networks.length === 0 ?
+								E('p', { 'class': 'ztc-empty ztc-empty-small' }, [ _('No networks created yet.') ]) :
+								E('ul', { 'class': 'ztc-network-list' }, networks.map(function(network) {
 									return E('li', {}, [
 										E('button', {
-											'class': 'btn cbi-button-action ztc-network-button ztc-code' + (nwid === activeNwid ? ' is-active' : ''),
-											'data-nwid': nwid,
+											'class': 'btn cbi-button-action ztc-network-button' + (network.id === activeNwid ? ' is-active' : ''),
+											'data-nwid': network.id,
 											'click': function(ev) {
 												ev.preventDefault();
-												self.loadNetworkDetails(nwid);
+												self.loadNetworkDetails(network.id);
 											}
-										}, [ nwid ])
+										}, [
+											E('span', { 'class': 'ztc-network-name' }, [ network.name || _('Unnamed Network') ]),
+											E('span', { 'class': 'ztc-network-id ztc-code' }, [ network.id ])
+										])
 									]);
-								}.bind(this))
-							)
+								}))
 						])
 					]),
-
-					// Create Network Card
+					E('div', { 'id': 'sidebar-network-tools' }),
 					E('div', { 'class': 'cbi-section ztc-card' }, [
 						E('h3', {}, [ _('Create Network') ]),
-						E('div', { 'class': 'cbi-value ztc-field' }, [
-							E('input', { 'type': 'text', 'id': 'new-net-name', 'class': 'ztc-full ztc-stack-input', 'placeholder': _('Network Name') }),
+						E('div', { 'class': 'ztc-sidebar-form' }, [
+							E('div', {}, [
+								E('label', { 'for': 'new-net-name' }, [ _('Network Name:') ]),
+								E('input', { 'type': 'text', 'id': 'new-net-name', 'class': 'ztc-full', 'placeholder': _('Network Name') })
+							]),
+							E('div', {}, [
+								E('label', { 'for': 'new-net-cidr' }, [ _('Network CIDR:') ]),
+								E('input', { 'type': 'text', 'id': 'new-net-cidr', 'class': 'ztc-full ztc-code', 'placeholder': '10.16.0.0/24' })
+							]),
 							E('button', {
 								'class': 'btn cbi-button-save ztc-full',
 								'disabled': controllerReady ? null : 'disabled',
 								'click': function(ev) {
 									ev.preventDefault();
-									var name = document.getElementById('new-net-name').value || 'new_network';
-									return callCreateNetwork(name).then(requireRpcResult).then(function(res) {
+									var nameInput = document.getElementById('new-net-name');
+									var cidrInput = document.getElementById('new-net-cidr');
+									var name = String(nameInput && nameInput.value || '').trim() || 'new_network';
+									var parsed = parseIPv4CIDR(cidrInput && cidrInput.value);
+									if (!parsed) {
+										showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
+										return;
+									}
+									return callCreateNetwork(name, parsed.cidr).then(requireRpcResult).then(function(res) {
 										var nwid = res.nwid || res.id;
 										if (!nwid)
 											throw new Error(_('Controller did not return a network ID'));
@@ -425,8 +464,6 @@ return view.extend({
 							}, [ _('Create New Network') ])
 						])
 					]),
-
-					// Import Backup Card
 					E('div', { 'class': 'cbi-section ztc-card' }, [
 						E('h3', {}, [ _('Import JSON Backup') ]),
 						E('div', { 'class': 'cbi-value ztc-field' }, [
@@ -454,8 +491,6 @@ return view.extend({
 						])
 					])
 				]),
-
-				// Main Content Column
 				E('div', { 'id': 'main-network-panel' }, [
 					E('div', { 'class': 'ztc-empty' }, [
 						E('p', {}, [ _('Select a network from the sidebar to view members and configuration.') ])
@@ -464,11 +499,10 @@ return view.extend({
 			])
 		]);
 
-		// Automatically load details of first network if available
 		if (activeNwid) {
-			setTimeout(function() {
-				this.loadNetworkDetails(activeNwid);
-			}.bind(this), 100);
+			window.setTimeout(function() {
+				self.loadNetworkDetails(activeNwid);
+			}, 100);
 		}
 
 		return viewContainer;
@@ -476,12 +510,15 @@ return view.extend({
 
 	loadNetworkDetails: function(nwid) {
 		var panel = document.getElementById('main-network-panel');
-		if (!panel) return;
+		var sidebarTools = document.getElementById('sidebar-network-tools');
+		if (!panel)
+			return;
+
 		document.querySelectorAll('.ztc-network-button').forEach(function(button) {
 			button.classList.toggle('is-active', button.getAttribute('data-nwid') === nwid);
 		});
 		panel.innerHTML = '';
-		panel.appendChild(E('p', {}, [ _('Loading network details for ') + nwid + '...' ]));
+		panel.appendChild(E('div', { 'class': 'ztc-empty ztc-empty-small' }, [ _('Loading network details for ') + nwid + '...' ]));
 
 		Promise.all([
 			callGetNetworkInfo(nwid),
@@ -491,9 +528,6 @@ return view.extend({
 			var membersRes = requireRpcResult(res[1]);
 			var membersMap = (membersRes && membersRes.members) ? membersRes.members : {};
 			var peersMap = (membersRes && Array.isArray(membersRes.peers)) ? membersRes.peers : [];
-			
-			// Build one connection record per peer. A reachable peer without an
-			// active physical path is connected through a ZeroTier relay.
 			var peerConnections = {};
 			var now = Date.now();
 			peersMap.forEach(function(peer) {
@@ -501,17 +535,15 @@ return view.extend({
 					peerConnections[String(peer.address).toLowerCase()] = peerConnectionInfo(peer, now);
 			});
 
-			var membersList = [];
-			if (Array.isArray(membersMap)) {
-				membersList = membersMap;
-			} else if (membersMap && typeof membersMap === 'object') {
-				membersList = Object.keys(membersMap).map(function(k) { return membersMap[k]; });
-			}
+			var members = Array.isArray(membersMap) ? membersMap :
+				(membersMap && typeof membersMap === 'object' ? Object.keys(membersMap).map(function(key) { return membersMap[key]; }) : []);
 
+			if (sidebarTools) {
+				sidebarTools.innerHTML = '';
+				sidebarTools.appendChild(this.renderSidebarNetworkTools(nwid, netInfo));
+			}
 			panel.innerHTML = '';
-			panel.appendChild(this.renderDashboardContent(nwid, netInfo, membersList, peerConnections));
-			
-			// Apply default filter: Online Only
+			panel.appendChild(this.renderDashboardContent(nwid, netInfo, members, peerConnections));
 			this.filterMembersTable();
 		}.bind(this)).catch(function(err) {
 			panel.innerHTML = '';
@@ -519,27 +551,114 @@ return view.extend({
 		});
 	},
 
+	renderSidebarNetworkTools: function(nwid, netInfo) {
+		var self = this;
+		var poolInfo = managedPoolInfo(netInfo);
+		var currentPoolCidr = poolInfo.cidr;
+		var currentPool = poolInfo.parsed;
+
+		return E('div', {}, [
+			E('div', { 'class': 'cbi-section ztc-card' }, [
+				E('h3', {}, [ _('Managed IPv4 Pool') ]),
+				E('div', { 'class': 'ztc-sidebar-form' }, [
+					E('div', {}, [
+						E('label', { 'for': 'ip-pool-cidr' }, [ _('Network CIDR:') ]),
+						E('input', {
+							'type': 'text',
+							'id': 'ip-pool-cidr',
+							'value': currentPoolCidr,
+							'placeholder': '10.16.0.0/24',
+							'class': 'ztc-full ztc-code',
+							'input': function(ev) {
+								var preview = document.getElementById('ip-pool-preview');
+								var parsed = parseIPv4CIDR(ev.target.value);
+								if (preview) {
+									preview.textContent = parsed ?
+										_('Network: %s · Assignable: %s - %s').format(parsed.cidr, parsed.start, parsed.end) :
+										_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.');
+								}
+							}
+						})
+					]),
+					E('div', { 'class': 'ztc-sidebar-preview', 'id': 'ip-pool-preview' }, [
+						currentPool ?
+							_('Network: %s · Assignable: %s - %s').format(currentPool.cidr, currentPool.start, currentPool.end) :
+							_('No managed IPv4 pool is configured.')
+					]),
+					E('button', {
+						'class': 'btn cbi-button-save ztc-full',
+						'click': function(ev) {
+							ev.preventDefault();
+							var input = document.getElementById('ip-pool-cidr');
+							var parsed = parseIPv4CIDR(input && input.value);
+							if (!parsed) {
+								showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
+								return;
+							}
+							return callUpdateIPPool(nwid, parsed.cidr, currentPoolCidr)
+								.then(requireRpcResult)
+								.then(function(res) {
+									showNotification(_('IP pool updated to ') + (res.cidr || parsed.cidr), 'success');
+									self.loadNetworkDetails(nwid);
+								})
+								.catch(handleRpcError);
+						}
+					}, [ _('Save IP Pool') ])
+				]),
+				E('p', { 'class': 'ztc-help' }, [
+					_('Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller.')
+				])
+			]),
+			E('div', { 'class': 'cbi-section ztc-card', 'id': 'add-member-section' }, [
+				E('h3', {}, [ _('Add Member Manually') ]),
+				E('div', { 'class': 'ztc-sidebar-form' }, [
+					E('div', {}, [
+						E('label', { 'for': 'add-nodeid' }, [ _('Node ID (10 chars):') ]),
+						E('input', { 'type': 'text', 'id': 'add-nodeid', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. bab1e61f17', 'maxlength': 10 })
+					]),
+					E('div', {}, [
+						E('label', { 'for': 'add-name' }, [ _('Name / Note:') ]),
+						E('input', { 'type': 'text', 'id': 'add-name', 'class': 'ztc-full', 'placeholder': 'e.g. Laptop' })
+					]),
+					E('button', {
+						'class': 'btn cbi-button-save ztc-full',
+						'click': function(ev) {
+							ev.preventDefault();
+							var nodeid = String(document.getElementById('add-nodeid').value || '').trim().toLowerCase();
+							var name = String(document.getElementById('add-name').value || '').trim();
+							if (!/^[0-9a-f]{10}$/.test(nodeid)) {
+								showNotification(_('Node ID must be 10 hexadecimal characters.'), 'warning');
+								return;
+							}
+							return callAuthorizeMember(nwid, nodeid, true)
+								.then(requireRpcResult)
+								.then(function() {
+									return name ? callRenameMember(nwid, nodeid, name).then(requireRpcResult) : null;
+								})
+								.then(function() {
+									showNotification(_('Member added and authorized.'), 'success');
+									self.loadNetworkDetails(nwid);
+								})
+								.catch(handleRpcError);
+						}
+					}, [ _('Add & Authorize') ])
+				])
+			])
+		]);
+	},
+
 	renderDashboardContent: function(nwid, netInfo, members, peerConnections) {
 		var self = this;
-		var configuredPool = (netInfo.ipAssignmentPools || [])[0] || {};
-		var configuredPoolStart = ipv4ToNumber(configuredPool.ipRangeStart);
-		var directIPv4Route = (netInfo.routes || []).find(function(route) {
-			var parsedRoute = route && !route.via ? parseIPv4CIDR(route.target) : null;
-			return parsedRoute && configuredPoolStart !== null &&
-				configuredPoolStart >= parsedRoute.networkNumber && configuredPoolStart <= parsedRoute.broadcastNumber;
-		}) || (netInfo.routes || []).find(function(route) {
-			return route && !route.via && parseIPv4CIDR(route.target);
-		});
-		var currentPoolCidr = directIPv4Route ? directIPv4Route.target : '';
-		var currentPool = parseIPv4CIDR(currentPoolCidr);
+		var pool = (netInfo.ipAssignmentPools || [])[0] || null;
+		var routes = netInfo.routes || [];
+
 		return E('div', { 'class': 'ztc-network-content' }, [
-			// Network Overview & Backup Actions
 			E('div', { 'class': 'cbi-section ztc-card ztc-overview' }, [
 				E('div', {}, [
-					E('h3', { 'class': 'ztc-heading-reset' }, [ netInfo.name || 'Network', ' (', nwid, ')' ]),
+					E('h3', { 'class': 'ztc-heading-reset' }, [ netInfo.name || _('Unnamed Network') ]),
+					E('span', { 'class': 'ztc-subtitle ztc-code' }, [ nwid ]),
 					E('span', { 'class': 'ztc-subtitle' }, [
-						_('IP Pool: '), (netInfo.ipAssignmentPools && netInfo.ipAssignmentPools[0]) ? 
-							(netInfo.ipAssignmentPools[0].ipRangeStart + ' - ' + netInfo.ipAssignmentPools[0].ipRangeEnd) : 'None'
+						_('IP Pool: '), pool ? (pool.ipRangeStart + ' - ' + pool.ipRangeEnd) : _('None')
 					])
 				]),
 				E('div', {}, [
@@ -562,63 +681,6 @@ return view.extend({
 					}, [ _('Export Backup (JSON)') ])
 				])
 			]),
-
-			// Managed IPv4 pool editor
-			E('div', { 'class': 'cbi-section ztc-card' }, [
-				E('h3', {}, [ _('Managed IPv4 Pool') ]),
-				E('div', { 'class': 'ztc-form-row' }, [
-					E('div', { 'class': 'ztc-form-field' }, [
-						E('label', { 'for': 'ip-pool-cidr' }, [ _('Network CIDR:') ]),
-						E('input', {
-							'type': 'text',
-							'id': 'ip-pool-cidr',
-							'value': currentPoolCidr,
-							'placeholder': '10.16.0.1/24',
-							'class': 'ztc-full ztc-code',
-							'input': function(ev) {
-								var preview = document.getElementById('ip-pool-preview');
-								var parsed = parseIPv4CIDR(ev.target.value);
-								if (!preview) return;
-								preview.textContent = parsed ?
-									_('Network: %s · Assignable: %s - %s').format(parsed.cidr, parsed.start, parsed.end) :
-									_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.');
-							}
-						}),
-						E('p', { 'class': 'ztc-help' }, [
-							_('Host addresses are accepted and normalized automatically, for example 10.16.0.1/24 becomes 10.16.0.0/24.')
-						])
-					]),
-					E('button', {
-						'class': 'btn cbi-button-save',
-						'click': function(ev) {
-							ev.preventDefault();
-							var input = document.getElementById('ip-pool-cidr');
-							var parsed = parseIPv4CIDR(input && input.value);
-							if (!parsed) {
-								showNotification(_('Enter a valid IPv4 CIDR using a prefix between /8 and /30.'), 'warning');
-								return;
-							}
-							return callUpdateIPPool(nwid, parsed.cidr, currentPoolCidr)
-								.then(requireRpcResult)
-								.then(function(res) {
-									showNotification(_('IP pool updated to ') + (res.cidr || parsed.cidr), 'success');
-									self.loadNetworkDetails(nwid);
-								})
-								.catch(handleRpcError);
-						}
-					}, [ _('Save IP Pool') ])
-				]),
-				E('div', { 'class': 'ztc-pool-preview', 'id': 'ip-pool-preview' }, [
-					currentPool ?
-						_('Network: %s · Assignable: %s - %s').format(currentPool.cidr, currentPool.start, currentPool.end) :
-						_('No managed IPv4 pool is configured.')
-				]),
-				E('p', { 'class': 'ztc-help' }, [
-					_('Changing the pool updates its direct managed route. Existing member IP assignments are kept until changed manually or reassigned by the Controller.')
-				])
-			]),
-
-			// Members Card (Default Online Filter + Sorting)
 			E('div', { 'class': 'cbi-section ztc-card' }, [
 				E('div', { 'class': 'ztc-overview ztc-card-heading' }, [
 					E('h3', { 'class': 'ztc-heading-reset' }, [ _('Network Members ('), members.length, ')' ]),
@@ -629,12 +691,9 @@ return view.extend({
 								ev.preventDefault();
 								self.loadNetworkDetails(nwid);
 							}
-						}, [ _('Refresh') ]),
-						E('a', { 'href': '#add-member-section', 'class': 'btn cbi-button-action' }, [ _('Add Member Manually') ])
+						}, [ _('Refresh') ])
 					])
 				]),
-
-				// Filter Bar
 				E('div', { 'class': 'ztc-filterbar' }, [
 					E('div', { 'class': 'ztc-filterfield' }, [
 						E('label', {}, [ _('Status:') ]),
@@ -649,8 +708,6 @@ return view.extend({
 						E('input', { 'type': 'text', 'id': 'member-search-input', 'class': 'ztc-full', 'placeholder': _('Search Node ID, Name, or IP...'), 'keyup': this.filterMembersTable.bind(this) })
 					])
 				]),
-
-				// Members Table Container
 				E('div', { 'class': 'ztc-table-wrap' }, [
 					E('table', { 'class': 'table cbi-section-table ztc-members-table', 'id': 'members-table' }, [
 						E('thead', {}, [
@@ -660,184 +717,151 @@ return view.extend({
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 2) }, [ _('Assigned IP') ]),
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 3) }, [ _('Connection') ]),
 								E('th', { 'class': 'ztc-table-sort', 'click': this.sortMembersTable.bind(this, 4) }, [ _('Status') ]),
-								E('th', { 'class': 'cbi-section-table-cell' }, [ _('Actions') ])
+								E('th', {}, [ _('Actions') ])
 							])
 						]),
-						E('tbody', { 'id': 'members-tbody' },
-							members.map(function(m) {
-								var memberId = String(m.id || '').toLowerCase();
-								var isController = (memberId === nwid.substring(0, 10).toLowerCase());
-								var connection = isController ?
-									{ online: true, mode: 'local', latency: -1 } :
-									(peerConnections[memberId] || { online: false, mode: 'offline', latency: -1 });
-								var modeLabel = {
-									direct: 'DIRECT',
-									relay: 'RELAY',
-									local: 'LOCAL',
-									offline: 'OFFLINE'
-								}[connection.mode] || 'OFFLINE';
+						E('tbody', { 'id': 'members-tbody' }, members.map(function(member) {
+							var memberId = String(member.id || '').toLowerCase();
+							var isController = memberId === nwid.substring(0, 10).toLowerCase();
+							var connection = isController ?
+								{ online: true, mode: 'local', latency: -1 } :
+								(peerConnections[memberId] || { online: false, mode: 'offline', latency: -1 });
+							var modeLabel = { direct: 'DIRECT', relay: 'RELAY', local: 'LOCAL', offline: 'OFFLINE' }[connection.mode] || 'OFFLINE';
 
-								return E('tr', {
-									'data-online': connection.online ? 'true' : 'false',
-									'data-search': (memberId + ' ' + (m.name || '') + ' ' + (m.ipAssignments || []).join(' ') + ' ' + modeLabel).toLowerCase()
-								}, [
-									E('td', { 'class': 'ztc-member-id ztc-code', 'title': memberId }, [ memberId ]),
-									E('td', {}, [
-										E('input', {
-											'type': 'text',
-											'value': m.name || '',
-											'placeholder': _('Set Name'),
-											'change': function(ev) {
-												callRenameMember(nwid, memberId, ev.target.value)
-													.then(requireRpcResult)
-													.catch(handleRpcError);
+							return E('tr', {
+								'data-online': connection.online ? 'true' : 'false',
+								'data-search': (memberId + ' ' + (member.name || '') + ' ' + (member.ipAssignments || []).join(' ') + ' ' + modeLabel).toLowerCase()
+							}, [
+								E('td', { 'class': 'ztc-member-id ztc-code', 'title': memberId }, [ memberId ]),
+								E('td', {}, [
+									E('input', {
+										'type': 'text',
+										'value': member.name || '',
+										'placeholder': _('Set Name'),
+										'change': function(ev) {
+											callRenameMember(nwid, memberId, ev.target.value).then(requireRpcResult).catch(handleRpcError);
+										}
+									})
+								]),
+								E('td', {}, [
+									E('input', {
+										'type': 'text',
+										'class': 'ztc-code',
+										'value': (member.ipAssignments || []).join(', '),
+										'placeholder': _('e.g. 10.x.y.z'),
+										'change': function(ev) {
+											var ips = ev.target.value.split(',').map(function(value) { return value.trim(); }).filter(Boolean);
+											callChangeMemberIP(nwid, memberId, ips).then(requireRpcResult).catch(handleRpcError);
+										}
+									})
+								]),
+								E('td', {}, [
+									E('div', { 'class': 'ztc-connection' }, [
+										E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ]),
+										(connection.online && connection.latency >= 0) ? E('span', { 'class': 'ztc-latency' }, [ connection.latency + ' ms' ]) : ''
+									])
+								]),
+								E('td', {}, [
+									E('span', { 'class': 'ztc-auth-badge ' + (member.authorized ? 'ztc-auth-authorized' : 'ztc-auth-pending') }, [
+										member.authorized ? _('Authorized') : _('Pending')
+									])
+								]),
+								E('td', {}, [
+									E('div', { 'class': 'ztc-member-actions' }, [
+										E('button', {
+											'class': member.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
+											'click': function(ev) {
+												ev.preventDefault();
+												return callAuthorizeMember(nwid, memberId, !member.authorized).then(requireRpcResult).then(function() {
+													self.loadNetworkDetails(nwid);
+												}).catch(handleRpcError);
 											}
-										})
-									]),
-									E('td', {}, [
-										E('input', {
-											'type': 'text',
-											'class': 'ztc-code',
-											'value': (m.ipAssignments || []).join(', '),
-											'placeholder': _('e.g. 10.x.y.z'),
-											'change': function(ev) {
-												var ips = ev.target.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-												callChangeMemberIP(nwid, memberId, ips)
-													.then(requireRpcResult)
-													.catch(handleRpcError);
-											}
-										})
-									]),
-									E('td', {}, [
-										E('div', { 'class': 'ztc-connection' }, [
-											E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ]),
-											(connection.online && connection.latency >= 0) ?
-												E('span', { 'class': 'ztc-latency' }, [ connection.latency + ' ms' ]) : ''
-										])
-									]),
-									E('td', {}, [
-										E('span', {
-											'class': 'ztc-auth-badge ' + (m.authorized ? 'ztc-auth-authorized' : 'ztc-auth-pending')
-										}, [ m.authorized ? _('Authorized') : _('Pending') ])
-									]),
-									E('td', {}, [
-										E('div', { 'class': 'ztc-member-actions' }, [
-											E('button', {
-												'class': m.authorized ? 'btn cbi-button-reset' : 'btn cbi-button-save',
-												'click': function(ev) {
-													ev.preventDefault();
-													return callAuthorizeMember(nwid, memberId, !m.authorized).then(requireRpcResult).then(function() {
+										}, [ member.authorized ? _('Deauth') : _('Authorize') ]),
+										E('button', {
+											'class': 'btn cbi-button-remove',
+											'disabled': isController ? 'disabled' : null,
+											'click': function(ev) {
+												ev.preventDefault();
+												if (confirm(_('Delete member ') + memberId + '?')) {
+													return callDeleteMember(nwid, memberId).then(requireRpcResult).then(function() {
 														self.loadNetworkDetails(nwid);
 													}).catch(handleRpcError);
 												}
-											}, [ m.authorized ? _('Deauth') : _('Authorize') ]),
-											E('button', {
-												'class': 'btn cbi-button-remove',
-												'disabled': isController ? 'disabled' : null,
-												'click': function(ev) {
-													ev.preventDefault();
-													if (confirm(_('Delete member ') + memberId + '?')) {
-														return callDeleteMember(nwid, memberId).then(requireRpcResult).then(function() {
-															self.loadNetworkDetails(nwid);
-														}).catch(handleRpcError);
-													}
-												}
-											}, [ _('Delete') ])
-										])
+											}
+										}, [ _('Delete') ])
 									])
-								]);
-							})
-						)
+								])
+							]);
+						}))
 					])
 				])
 			]),
-
-			// Add Member Form Card
-			E('div', { 'class': 'cbi-section ztc-card', 'id': 'add-member-section' }, [
-				E('h3', {}, [ _('Add Member Manually') ]),
-				E('div', { 'class': 'ztc-form-row' }, [
-					E('div', { 'class': 'ztc-form-field' }, [
-						E('label', {}, [ _('Node ID (10 chars):') ]),
-						E('input', { 'type': 'text', 'id': 'add-nodeid', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. bab1e61f17', 'maxlength': 10 })
-					]),
-					E('div', { 'class': 'ztc-form-field' }, [
-						E('label', {}, [ _('Name / Note:') ]),
-						E('input', { 'type': 'text', 'id': 'add-name', 'class': 'ztc-full', 'placeholder': 'e.g. Laptop' })
-					]),
-					E('button', {
-						'class': 'btn cbi-button-save',
-						'click': function(ev) {
-							ev.preventDefault();
-							var nodeid = document.getElementById('add-nodeid').value;
-							var name = document.getElementById('add-name').value;
-								if (!nodeid || nodeid.length !== 10) {
-								showNotification(_('Node ID must be 10 characters.'), 'warning');
-								return;
-							}
-							return callAuthorizeMember(nwid, nodeid, true)
-								.then(requireRpcResult)
-								.then(function() {
-									return name ? callRenameMember(nwid, nodeid, name).then(requireRpcResult) : null;
-								})
-								.then(function() { self.loadNetworkDetails(nwid); })
-								.catch(handleRpcError);
-						}
-					}, [ _('Add & Authorize') ])
-				])
-			]),
-
-			// Routes Card
 			E('div', { 'class': 'cbi-section ztc-card' }, [
 				E('h3', {}, [ _('Routes Configuration') ]),
-				E('table', { 'class': 'table cbi-section-table ztc-route-table' }, [
-					E('thead', {}, [
-						E('tr', {}, [
-							E('th', {}, [ _('Target CIDR') ]),
-							E('th', {}, [ _('Via Gateway') ]),
-							E('th', {}, [ _('Action') ])
-						])
-					]),
-					E('tbody', {},
-						(netInfo.routes || []).map(function(r) {
+				E('div', { 'class': 'ztc-route-wrap' }, [
+					E('table', { 'class': 'ztc-route-table' }, [
+						E('colgroup', {}, [
+							E('col', { 'class': 'ztc-route-target-col' }),
+							E('col', { 'class': 'ztc-route-via-col' }),
+							E('col', { 'class': 'ztc-route-action-col' })
+						]),
+						E('thead', {}, [
+							E('tr', {}, [
+								E('th', {}, [ _('Target CIDR') ]),
+								E('th', {}, [ _('Via Gateway') ]),
+								E('th', {}, [ _('Action') ])
+							])
+						]),
+						E('tbody', {}, routes.length ? routes.map(function(route) {
 							return E('tr', {}, [
-								E('td', { 'class': 'ztc-code' }, [ r.target ]),
-								E('td', { 'class': r.via ? 'ztc-code' : '' }, [ r.via || _('Direct') ]),
+								E('td', { 'class': 'ztc-code' }, [ route.target ]),
+								E('td', { 'class': route.via ? 'ztc-code' : '' }, [ route.via || _('Direct') ]),
 								E('td', {}, [
 									E('button', {
-										'class': 'btn cbi-button-remove',
+										'class': 'btn cbi-button-remove ztc-route-button',
 										'click': function(ev) {
 											ev.preventDefault();
-											return callDelRoute(nwid, r.target).then(requireRpcResult).then(function() {
+											return callDelRoute(nwid, route.target).then(requireRpcResult).then(function() {
 												self.loadNetworkDetails(nwid);
 											}).catch(handleRpcError);
 										}
 									}, [ _('Delete Route') ])
 								])
 							]);
-						})
-					)
-				]),
-				E('div', { 'class': 'ztc-route-form' }, [
-					E('div', { 'class': 'ztc-form-field' }, [
-						E('label', {}, [ _('Target CIDR:') ]),
-						E('input', { 'type': 'text', 'id': 'route-target', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. 10.10.0.0/24' })
-					]),
-					E('div', { 'class': 'ztc-form-field' }, [
-						E('label', {}, [ _('Via Gateway (Optional):') ]),
-						E('input', { 'type': 'text', 'id': 'route-via', 'class': 'ztc-full ztc-code', 'placeholder': 'e.g. 10.121.15.1' })
-					]),
-					E('button', {
-						'class': 'btn cbi-button-save',
-						'click': function(ev) {
-							ev.preventDefault();
-							var target = document.getElementById('route-target').value;
-							var via = document.getElementById('route-via').value;
-							if (!target) return;
-							return callAddRoute(nwid, target, via).then(requireRpcResult).then(function() {
-								self.loadNetworkDetails(nwid);
-							}).catch(handleRpcError);
-						}
-					}, [ _('Add Route') ])
+						}) : [
+							E('tr', {}, [ E('td', { 'class': 'ztc-route-empty', 'colspan': 3 }, [ _('No routes configured.') ]) ])
+						]),
+						E('tfoot', {}, [
+							E('tr', { 'class': 'ztc-route-editor' }, [
+								E('td', {}, [
+									E('label', { 'for': 'route-target' }, [ _('Target CIDR:') ]),
+									E('input', { 'type': 'text', 'id': 'route-target', 'class': 'ztc-code', 'placeholder': 'e.g. 10.10.0.0/24' })
+								]),
+								E('td', {}, [
+									E('label', { 'for': 'route-via' }, [ _('Via Gateway (Optional):') ]),
+									E('input', { 'type': 'text', 'id': 'route-via', 'class': 'ztc-code', 'placeholder': 'e.g. 10.121.15.1' })
+								]),
+								E('td', {}, [
+									E('label', { 'class': 'ztc-route-action-label', 'aria-hidden': 'true' }, [ _('Action') ]),
+									E('button', {
+										'class': 'btn cbi-button-save ztc-route-button',
+										'click': function(ev) {
+											ev.preventDefault();
+											var target = String(document.getElementById('route-target').value || '').trim();
+											var via = String(document.getElementById('route-via').value || '').trim();
+											if (!target) {
+												showNotification(_('Target CIDR is required.'), 'warning');
+												return;
+											}
+											return callAddRoute(nwid, target, via).then(requireRpcResult).then(function() {
+												self.loadNetworkDetails(nwid);
+											}).catch(handleRpcError);
+										}
+									}, [ _('Add Route') ])
+								])
+							])
+						])
+					])
 				])
 			])
 		]);
@@ -846,39 +870,30 @@ return view.extend({
 	filterMembersTable: function() {
 		var statusFilter = document.getElementById('status-filter-select');
 		var searchInput = document.getElementById('member-search-input');
-		if (!statusFilter || !searchInput) return;
+		if (!statusFilter || !searchInput)
+			return;
 
 		var filterVal = statusFilter.value;
 		var searchVal = searchInput.value.toLowerCase().trim();
-		var rows = document.querySelectorAll('#members-tbody tr');
-
-		rows.forEach(function(row) {
+		document.querySelectorAll('#members-tbody tr').forEach(function(row) {
 			var isOnline = row.getAttribute('data-online') === 'true';
 			var searchData = row.getAttribute('data-search') || '';
-
-			var matchesStatus = (filterVal === 'all') || (filterVal === 'online' && isOnline) || (filterVal === 'offline' && !isOnline);
-			var matchesSearch = searchData.indexOf(searchVal) !== -1;
-
-			if (matchesStatus && matchesSearch) {
-				row.style.display = '';
-			} else {
-				row.style.display = 'none';
-			}
+			var matchesStatus = filterVal === 'all' || (filterVal === 'online' && isOnline) || (filterVal === 'offline' && !isOnline);
+			row.style.display = matchesStatus && searchData.indexOf(searchVal) !== -1 ? '' : 'none';
 		});
 	},
 
 	sortMembersTable: function(colIdx) {
 		var tbody = document.getElementById('members-tbody');
-		if (!tbody) return;
+		if (!tbody)
+			return;
 		var rows = Array.from(tbody.querySelectorAll('tr'));
-
 		rows.sort(function(a, b) {
 			var valA = a.children[colIdx] ? a.children[colIdx].textContent.trim().toLowerCase() : '';
 			var valB = b.children[colIdx] ? b.children[colIdx].textContent.trim().toLowerCase() : '';
 			return valA.localeCompare(valB);
 		});
-
 		tbody.innerHTML = '';
-		rows.forEach(function(r) { tbody.appendChild(r); });
+		rows.forEach(function(row) { tbody.appendChild(row); });
 	}
 });
