@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: luci-app-zerotier\n"
-"PO-Revision-Date: 2026-07-23 21:30+0800\n"
+"PO-Revision-Date: 2026-07-23 22:15+0800\n"
 "Last-Translator: Aimee <aimee@github.com>\n"
 "Language-Team: Chinese Simplified\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -434,3 +434,12 @@ msgstr "名称和 IP 均可留空；成员将立即授权。"
 
 msgid "Enter a valid IPv4 address."
 msgstr "请输入有效的 IPv4 地址。"
+
+msgid "Network join QR code"
+msgstr "网络加入二维码"
+
+msgid "Scan to join"
+msgstr "扫码加入"
+
+msgid "Scan with the ZeroTier app to join this network."
+msgstr "使用 ZeroTier App 扫码加入此网络。"
