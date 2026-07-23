@@ -302,8 +302,7 @@ function dashboardStyles() {
 		'@media (max-width: 900px) { .ztc-dashboard .ztc-layout { grid-template-columns:1fr; } .ztc-dashboard .ztc-sidebar { position:static; } .ztc-dashboard .ztc-status-card, .ztc-dashboard .ztc-overview { align-items:flex-start; flex-direction:column; } .ztc-dashboard .ztc-status-pills, .ztc-dashboard .ztc-actions { justify-content:flex-start; } }',
 		'@media (max-width: 720px) { .ztc-dashboard .ztc-filterbar { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form { grid-template-columns:1fr; } .ztc-dashboard .ztc-route-form > .btn { width:100%; } }',
 		'@media (max-width: 560px) { .ztc-dashboard .ztc-hero { align-items:flex-start; padding:18px; } .ztc-dashboard .ztc-brandmark, .ztc-dashboard .ztc-count { display:none; } .ztc-dashboard .ztc-card { padding:14px; } .ztc-dashboard .ztc-form-row > button { width:100%; } .ztc-dashboard .ztc-filterfield { align-items:stretch; flex-direction:column; gap:5px; } }'
-	].join('
-');
+	].join('\n');
 }
 
 return view.extend({
