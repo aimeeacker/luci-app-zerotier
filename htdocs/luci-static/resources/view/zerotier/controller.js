@@ -38,7 +38,7 @@ var callUpdateIPPool = rpc.declare({
 var callListMembers = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'list_members',
-	params: [ 'nwid' ]
+	params: [ 'nwid', 'online_only' ]
 });
 
 var callAuthorizeMember = rpc.declare({
@@ -416,6 +416,15 @@ return view.extend({
 		var activeNwid = networks.length > 0 ? networks[0].id : null;
 		var self = this;
 
+		var storageWarning = null;
+		if (status.storageWritable === false) {
+			storageWarning = _('Warning: ZeroTier storage directory is not writable. Controller configuration changes cannot be saved.');
+		} else if (status.tokenPresent === false) {
+			storageWarning = _('Warning: ZeroTier authtoken.secret not found. Controller API authentication failed.');
+		} else if (status.freeSpaceBytes !== undefined && status.freeSpaceBytes >= 0 && status.freeSpaceBytes < 1048576) {
+			storageWarning = _('Warning: Low storage space on ZeroTier data directory (less than 1 MB available).');
+		}
+
 		var viewContainer = E('div', { 'class': 'cbi-map ztc-dashboard' }, [
 			E('style', {}, [ dashboardStyles() ]),
 			E('div', { 'id': 'ztc-notifications', 'class': 'ztc-toast-stack', 'aria-live': 'polite' }),
@@ -445,6 +454,7 @@ return view.extend({
 					])
 				])
 			]),
+			storageWarning ? E('div', { 'class': 'alert-message danger', 'style': 'margin:0 0 16px 0;' }, [ storageWarning ]) : '',
 			E('div', { 'class': 'ztc-layout' }, [
 				E('aside', { 'class': 'ztc-sidebar' }, [
 					E('div', { 'class': 'cbi-section ztc-card' }, [
@@ -519,6 +529,11 @@ return view.extend({
 										showNotification(_('Please select a JSON backup file.'), 'warning');
 										return;
 									}
+									var file = fileInput.files[0];
+									if (file.size > 1024 * 1024) {
+										showNotification(_('Backup file is too large (maximum 1 MB allowed).'), 'warning');
+										return;
+									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
 										callImportBackup(e.target.result).then(requireRpcResult).then(function() {
@@ -549,22 +564,43 @@ return view.extend({
 		return viewContainer;
 	},
 
-	loadNetworkDetails: function(nwid) {
+	loadNetworkDetails: function(nwid, onlineOnlyParam) {
 		var panel = document.getElementById('main-network-panel');
 		var sidebarTools = document.getElementById('sidebar-network-tools');
 		if (!panel)
 			return;
 
+		if (this.isRefreshing && this.activeNwid === nwid && onlineOnlyParam === undefined)
+			return;
+
+		this.isRefreshing = true;
+		this.activeNwid = nwid;
+
+		var statusFilterSelect = document.getElementById('status-filter-select');
+		var onlineOnly = (onlineOnlyParam !== undefined) ? onlineOnlyParam :
+			(statusFilterSelect ? statusFilterSelect.value === 'online' : true);
+
+		var refreshBtn = document.getElementById('ztc-refresh-btn');
+		if (refreshBtn) {
+			refreshBtn.disabled = true;
+			refreshBtn.textContent = _('Refreshing...');
+		}
+
 		document.querySelectorAll('.ztc-network-button').forEach(function(button) {
 			button.classList.toggle('is-active', button.getAttribute('data-nwid') === nwid);
 		});
-		panel.innerHTML = '';
-		panel.appendChild(E('div', { 'class': 'ztc-empty ztc-empty-small' }, [ _('Loading network details for ') + nwid + '...' ]));
 
-		Promise.all([
+		if (!panel.firstChild || !panel.querySelector('.ztc-network-overview')) {
+			panel.innerHTML = '';
+			panel.appendChild(E('div', { 'class': 'ztc-empty ztc-empty-small' }, [ _('Loading network details for ') + nwid + '...' ]));
+		}
+
+		var self = this;
+		return Promise.all([
 			callGetNetworkInfo(nwid),
-			callListMembers(nwid)
+			callListMembers(nwid, onlineOnly)
 		]).then(function(res) {
+			self.isRefreshing = false;
 			var netInfo = requireRpcResult(res[0]);
 			var membersRes = requireRpcResult(res[1]);
 			var membersMap = (membersRes && membersRes.members) ? membersRes.members : {};
@@ -581,12 +617,18 @@ return view.extend({
 
 			if (sidebarTools) {
 				sidebarTools.innerHTML = '';
-				sidebarTools.appendChild(this.renderSidebarNetworkTools(nwid, netInfo));
+				sidebarTools.appendChild(self.renderSidebarNetworkTools(nwid, netInfo));
 			}
 			panel.innerHTML = '';
-			panel.appendChild(this.renderDashboardContent(nwid, netInfo, members, peerConnections));
-			this.filterMembersTable();
-		}.bind(this)).catch(function(err) {
+			panel.appendChild(self.renderDashboardContent(nwid, netInfo, members, peerConnections));
+			self.filterMembersTable();
+		}).catch(function(err) {
+			self.isRefreshing = false;
+			var btn = document.getElementById('ztc-refresh-btn');
+			if (btn) {
+				btn.disabled = false;
+				btn.textContent = _('Refresh');
+			}
 			panel.innerHTML = '';
 			panel.appendChild(E('div', { 'class': 'alert-message warning' }, [ rpcErrorMessage({ error: err.message || String(err) }) ]));
 		});
@@ -694,6 +736,7 @@ return view.extend({
 					E('h3', { 'class': 'ztc-heading-reset' }, [ _('Network Members ('), members.length, ')' ]),
 					E('div', { 'class': 'ztc-actions' }, [
 						E('button', {
+							'id': 'ztc-refresh-btn',
 							'class': 'btn cbi-button-neutral',
 							'click': function(ev) {
 								ev.preventDefault();
@@ -705,7 +748,13 @@ return view.extend({
 				E('div', { 'class': 'ztc-filterbar' }, [
 					E('div', { 'class': 'ztc-filterfield' }, [
 						E('label', {}, [ _('Status:') ]),
-						E('select', { 'id': 'status-filter-select', 'change': this.filterMembersTable.bind(this) }, [
+						E('select', {
+							'id': 'status-filter-select',
+							'change': function(ev) {
+								var isOnlineOnly = ev.target.value === 'online';
+								self.loadNetworkDetails(nwid, isOnlineOnly);
+							}
+						}, [
 							E('option', { 'value': 'online', 'selected': 'selected' }, [ _('Online Only') ]),
 							E('option', { 'value': 'all' }, [ _('All Members') ]),
 							E('option', { 'value': 'offline' }, [ _('Offline Only') ])

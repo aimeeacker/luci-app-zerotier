@@ -1,7 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 
-# ZeroTier Controller rpcd plugin for OpenWrt ubus
+if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
+	exec ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"
+fi
 
 get_token() {
 	if [ -n "${ZT_CONTROLLER_TOKEN:-}" ]; then
@@ -175,21 +177,48 @@ case "$1" in
 	call)
 		case "$2" in
 			status)
+				zt_dir=""
+				[ -d /var/lib/zerotier-one ] && zt_dir="/var/lib/zerotier-one"
+				[ -z "$zt_dir" ] && [ -d /etc/zerotier ] && zt_dir="/etc/zerotier"
+
+				token_present=false
+				[ -n "$zt_dir" ] && [ -f "$zt_dir/authtoken.secret" ] && token_present=true
+
+				storage_writable=false
+				[ -n "$zt_dir" ] && [ -w "$zt_dir" ] && storage_writable=true
+
+				free_space=-1
+				if [ -n "$zt_dir" ]; then
+					free_space="$(df -k "$zt_dir" 2>/dev/null | awk 'NR==2 {print $4 * 1024}')"
+					case "$free_space" in *[!0-9]*|'') free_space=-1 ;; esac
+				fi
+
 				node_status="$(zt_api GET /status)"
 				if has_error "$node_status"; then
-					printf '%s' "$node_status" | jq -c '. + { online: false, controller: false, databaseReady: false }'
+					jq -cn \
+						--argjson node "$node_status" \
+						--argjson token_present "$token_present" \
+						--argjson storage_writable "$storage_writable" \
+						--argjson free_space "$free_space" \
+						'$node + { online: false, controller: false, databaseReady: false, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 				else
 					controller_status="$(zt_api GET /controller)"
 					if has_error "$controller_status"; then
 						jq -cn \
 							--argjson node "$node_status" \
 							--argjson controller_error "$controller_status" \
-							'$node + { controller: false, databaseReady: false, controllerError: $controller_error.error, controllerHttpStatus: $controller_error.http_status }'
+							--argjson token_present "$token_present" \
+							--argjson storage_writable "$storage_writable" \
+							--argjson free_space "$free_space" \
+							'$node + { controller: false, databaseReady: false, controllerError: $controller_error.error, controllerHttpStatus: $controller_error.http_status, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 					else
 						jq -cn \
 							--argjson node "$node_status" \
 							--argjson controller_status "$controller_status" \
-							'$node + { controller: ($controller_status.controller == true), databaseReady: ($controller_status.databaseReady == true), controllerApiVersion: $controller_status.apiVersion }'
+							--argjson token_present "$token_present" \
+							--argjson storage_writable "$storage_writable" \
+							--argjson free_space "$free_space" \
+							'$node + { controller: ($controller_status.controller == true), databaseReady: ($controller_status.databaseReady == true), controllerApiVersion: $controller_status.apiVersion, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 					fi
 				fi
 				;;
@@ -472,6 +501,11 @@ case "$1" in
 				backup_json="$(printf '%s' "$input" | jq -r '.backup_data // empty')"
 				if [ -z "$backup_json" ]; then
 					echo '{"error": "missing backup data"}'
+					exit 0
+				fi
+
+				if [ "${#backup_json}" -gt 2000000 ]; then
+					echo '{"error": "Backup payload exceeds 2 MB limit"}'
 					exit 0
 				fi
 				
