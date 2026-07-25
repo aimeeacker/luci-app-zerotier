@@ -1,6 +1,10 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 
+if [ "$1" = "call" ] && [ -z "${ZT_RPC_INPUT+x}" ]; then
+	export ZT_RPC_INPUT="$(cat)"
+fi
+
 if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
 	if ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"; then
 		exit 0
@@ -90,8 +94,12 @@ parse_ipv4_cidr() {
 
 read_rpc_input() {
 	rpc_method="$1"
-	input=''
-	IFS= read -r input
+	if [ -n "${ZT_RPC_INPUT+x}" ]; then
+		input="$ZT_RPC_INPUT"
+	else
+		input=''
+		IFS= read -r input || input=""
+	fi
 	if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
 		json_error "invalid RPC request JSON" RPC "$rpc_method" 0
 		return 1

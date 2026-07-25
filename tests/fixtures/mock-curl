@@ -16,6 +16,12 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$method $url" in
+	"GET http://127.0.0.1:9993/status")
+		body='{"address":"8056c2e21c","version":"1.10.6","online":true}'
+		;;
+	"GET http://127.0.0.1:9993/controller")
+		body='{"controller":true,"databaseReady":true,"apiVersion":1}'
+		;;
 	"GET http://127.0.0.1:9993/controller/network")
 		body='["8056c2e21c000001"]'
 		;;
@@ -23,7 +29,10 @@ case "$method $url" in
 		body='{"id":"8056c2e21c000001","name":"home_zj","v4AssignMode":{"zt":false},"routes":[{"target":"10.10.10.0/24","via":null},{"target":"192.168.50.0/24","via":"10.10.10.1"},{"target":"10.200.0.0/16","via":null}]}'
 		;;
 	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member")
-		body='{"bab1e61f17":1720000000,"dead100000":1700000000}'
+		body='{"8056c2e21c":1720000000,"bab1e61f17":1720000000,"dead100000":1700000000}'
+		;;
+	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/8056c2e21c")
+		body='{"id":"8056c2e21c","name":"controller_self","authorized":true}'
 		;;
 	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/bab1e61f17")
 		body='{"id":"bab1e61f17","name":"online_node","authorized":true}'
@@ -47,5 +56,9 @@ case "$method $url" in
 		;;
 esac
 
-printf '%s' "$body" > "$body_file"
-printf '200'
+if [ -n "$body_file" ]; then
+	printf '%s' "$body" > "$body_file"
+	printf '200'
+else
+	printf '%s\n200' "$body"
+fi
