@@ -55,4 +55,18 @@ zt_invalid="$(printf '%s\n' '{"nwid":"8056c2e21c000001","cidr":"10.16.0.1/31","o
 	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call update_ip_pool)"
 printf '%s' "$zt_invalid" | jq -e '.error | contains("/8 and /30")' >/dev/null
 
+zt_status="$(printf '%s\n' '{}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call status)"
+printf '%s' "$zt_status" | jq -e '
+	(.tokenPresent | type == "boolean") and
+	(.storageWritable | type == "boolean") and
+	(.freeSpaceBytes | type == "number")
+' >/dev/null
+
+zt_members_online="$(printf '%s\n' '{"nwid":"8056c2e21c000001","online_only":true}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call list_members)"
+printf '%s' "$zt_members_online" | jq -e '
+	.members != null and .peers != null
+' >/dev/null
+
 echo 'rpcd Controller tests passed'

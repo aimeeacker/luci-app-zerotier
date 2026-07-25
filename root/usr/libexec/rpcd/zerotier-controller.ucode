@@ -1,11 +1,20 @@
 #!/usr/bin/ucode
 /* SPDX-License-Identifier: Apache-2.0 */
 
-import { readfile, stat, statvfs } from 'fs';
-import { exec, getenv } from 'os';
+import { readfile, popen, stat, statvfs, open, unlink, access } from 'fs';
+import { getenv } from 'os';
 
 function trim(s) {
 	return s ? replace(s, /^[\s\r\n]+|[\s\r\n]+$/g, '') : '';
+}
+
+function lc(s) {
+	return s ? replace(String(s), /[A-Z]/g, (c) => lc_char(c)) : '';
+}
+
+function lc_char(c) {
+	let code = ord(c);
+	return (code >= 65 && code <= 90) ? chr(code + 32) : c;
 }
 
 function get_token() {
@@ -62,19 +71,23 @@ function parse_ipv4_cidr(cidr) {
 	};
 }
 
+function shell_escape(s) {
+	return "'" + replace(String(s), /'/g, "'\\''") + "'";
+}
+
 function zt_api(method, path, data) {
 	let token = get_token();
 	if (!token)
 		return json_error('authtoken.secret not found', method, path, 0);
 
-	let cmd = ['curl', '-sS', '-w', '\n%{http_code}', '-X', method, '-H', 'X-ZT1-AUTH: ' + token];
+	let cmd = sprintf("curl -sS -w '\\n%%{http_code}' -X %s -H %s", shell_escape(method), shell_escape('X-ZT1-AUTH: ' + token));
 	if (data != null) {
-		cmd.push('-H', 'Content-Type: application/json');
-		cmd.push('-d', type(data) == 'string' ? data : sprintf('%J', data));
+		let payload = (type(data) == 'string') ? data : sprintf('%J', data);
+		cmd += sprintf(" -H 'Content-Type: application/json' -d %s", shell_escape(payload));
 	}
-	cmd.push('http://127.0.0.1:9993' + path);
+	cmd += sprintf(" %s", shell_escape('http://127.0.0.1:9993' + path));
 
-	let proc = exec(cmd);
+	let proc = popen(cmd, 'r');
 	if (!proc)
 		return json_error('failed to execute curl', method, path, 0);
 
@@ -101,11 +114,22 @@ function zt_api(method, path, data) {
 	}
 }
 
+function check_dir_writable(dir) {
+	if (!dir || !stat(dir)) return false;
+	let test_file = dir + '/.ztc_write_test_' + sprintf('%d', int(rand() * 100000));
+	let f = open(test_file, 'w');
+	if (!f) return false;
+	f.write('test');
+	f.close();
+	unlink(test_file);
+	return true;
+}
+
 function get_storage_info() {
 	let zt_dir = stat('/var/lib/zerotier-one') ? '/var/lib/zerotier-one' : (stat('/etc/zerotier') ? '/etc/zerotier' : null);
 	let token_path = zt_dir ? zt_dir + '/authtoken.secret' : null;
 	let token_present = token_path ? stat(token_path) != null : false;
-	let writable = zt_dir ? stat(zt_dir + '/controller.d') != null || stat(zt_dir) != null : false;
+	let writable = zt_dir ? check_dir_writable(zt_dir) : false;
 	let vfs = zt_dir ? statvfs(zt_dir) : null;
 	let free_space = vfs ? (vfs.bavail * vfs.frsize) : -1;
 
@@ -121,6 +145,18 @@ function read_rpc_input() {
 	let input_str = readfile('/dev/stdin') || '';
 	if (!input_str || trim(input_str) == '') return {};
 	return json(input_str) || {};
+}
+
+function is_peer_online(peer) {
+	if (!peer || type(peer) != 'object') return false;
+	if (peer.latency != null && int(peer.latency) >= 0) return true;
+	let paths = peer.paths || [];
+	if (type(paths) == 'array' && length(paths) > 0) {
+		for (let p in paths) {
+			if (p && (p.active == true || p.preferred == true)) return true;
+		}
+	}
+	return false;
 }
 
 let action = ARGV[1];
@@ -320,7 +356,8 @@ if (action == 'call') {
 		let online_peers_map = {};
 		if (type(peers_list) == 'array') {
 			for (let peer in peers_list) {
-				if (peer.address) online_peers_map[lc(peer.address)] = true;
+				if (peer.address && is_peer_online(peer))
+					online_peers_map[lc(peer.address)] = true;
 			}
 		}
 
@@ -447,7 +484,7 @@ if (action == 'call') {
 
 	if (method == 'import_backup') {
 		let backup_str = input.backup_data || '';
-		if (length(backup_str) > 2000000) {
+		if (length(backup_str) > 2097152) {
 			print('{"error": "Backup payload exceeds 2 MB limit"}\n');
 			exit(0);
 		}

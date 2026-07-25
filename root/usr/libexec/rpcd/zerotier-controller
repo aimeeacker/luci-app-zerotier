@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
-	exec ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"
+	if ucode -c /usr/libexec/rpcd/zerotier-controller.ucode >/dev/null 2>&1; then
+		exec ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"
+	fi
 fi
 
 get_token() {
@@ -100,6 +102,7 @@ zt_api() {
 	method="$1"
 	path="$2"
 	data="$3"
+
 	token="$(get_token)"
 
 	if [ -z "$token" ]; then
@@ -163,7 +166,7 @@ case "$1" in
 		echo '  "get_network_info": { "nwid": "string" },'
 		echo '  "create_network": { "name": "string", "cidr": "string" },'
 		echo '  "update_ip_pool": { "nwid": "string", "cidr": "string", "old_cidr": "string" },'
-		echo '  "list_members": { "nwid": "string" },'
+		echo '  "list_members": { "nwid": "string", "online_only": "boolean" },'
 		echo '  "authorize_member": { "nwid": "string", "nodeid": "string", "authorized": "boolean" },'
 		echo '  "change_member_ip": { "nwid": "string", "nodeid": "string", "ip_assignments": "array" },'
 		echo '  "rename_member": { "nwid": "string", "nodeid": "string", "name": "string" },'
@@ -185,7 +188,13 @@ case "$1" in
 				[ -n "$zt_dir" ] && [ -f "$zt_dir/authtoken.secret" ] && token_present=true
 
 				storage_writable=false
-				[ -n "$zt_dir" ] && [ -w "$zt_dir" ] && storage_writable=true
+				if [ -n "$zt_dir" ] && [ -d "$zt_dir" ]; then
+					test_file="$zt_dir/.ztc_write_test_$$"
+					if touch "$test_file" 2>/dev/null; then
+						rm -f "$test_file"
+						storage_writable=true
+					fi
+				fi
 
 				free_space=-1
 				if [ -n "$zt_dir" ]; then
@@ -352,6 +361,7 @@ case "$1" in
 			list_members)
 				if ! read_rpc_input list_members; then exit 0; fi
 				nwid="$(printf '%s' "$input" | jq -r '.nwid // empty')"
+				online_only="$(printf '%s' "$input" | jq -r 'if .online_only == true then "true" else "false" end')"
 				if ! valid_nwid "$nwid"; then
 					echo '{"error": "missing nwid"}'
 					exit 0
@@ -363,18 +373,30 @@ case "$1" in
 					exit 0
 				fi
 
+				peers_list="$(zt_api GET "/peer")"
+				if has_error "$peers_list"; then
+					peers_list='[]'
+				fi
+
+				online_peers=""
+				if [ "$online_only" = "true" ]; then
+					online_peers="$(printf '%s' "$peers_list" | jq -r '.[]? | select((.latency // -1) >= 0 or (((.paths // []) | map(select(.active == true or .preferred == true))) | length > 0)) | (.address // empty) | ascii_downcase')"
+				fi
+
 				members_list='[]'
 				for nodeid in $(printf '%s' "$members_index" | jq -r 'keys[]?'); do
+					if [ "$online_only" = "true" ]; then
+						nodeid_lc="$(printf '%s' "$nodeid" | tr '[:upper:]' '[:lower:]')"
+						case " $online_peers " in
+							*" $nodeid_lc "*) ;;
+							*) continue ;;
+						esac
+					fi
 					member="$(zt_api GET "/controller/network/$nwid/member/$nodeid")"
 					if ! has_error "$member"; then
 						members_list="$(jq -cn --argjson members "$members_list" --argjson member "$member" '$members + [$member]')"
 					fi
 				done
-
-				peers_list="$(zt_api GET "/peer")"
-				if has_error "$peers_list"; then
-					peers_list='[]'
-				fi
 
 				jq -cn --argjson members "$members_list" --argjson peers "$peers_list" '{ members: $members, peers: $peers }'
 				;;
@@ -504,7 +526,7 @@ case "$1" in
 					exit 0
 				fi
 
-				if [ "${#backup_json}" -gt 2000000 ]; then
+				if [ "${#backup_json}" -gt 2097152 ]; then
 					echo '{"error": "Backup payload exceeds 2 MB limit"}'
 					exit 0
 				fi

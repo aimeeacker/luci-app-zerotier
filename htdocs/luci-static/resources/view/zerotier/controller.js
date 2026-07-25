@@ -530,8 +530,8 @@ return view.extend({
 										return;
 									}
 									var file = fileInput.files[0];
-									if (file.size > 1024 * 1024) {
-										showNotification(_('Backup file is too large (maximum 1 MB allowed).'), 'warning');
+									if (file.size > 2097152) {
+										showNotification(_('Backup file is too large (maximum 2 MB allowed).'), 'warning');
 										return;
 									}
 									var reader = new FileReader();
@@ -747,17 +747,18 @@ return view.extend({
 				]),
 				E('div', { 'class': 'ztc-filterbar' }, [
 					E('div', { 'class': 'ztc-filterfield' }, [
-						E('label', {}, [ _('Status:') ]),
+						E('label', { 'for': 'status-filter-select' }, [ _('Status:') ]),
 						E('select', {
 							'id': 'status-filter-select',
 							'change': function(ev) {
-								var isOnlineOnly = ev.target.value === 'online';
+								self.statusFilter = ev.target.value;
+								var isOnlineOnly = self.statusFilter === 'online';
 								self.loadNetworkDetails(nwid, isOnlineOnly);
 							}
 						}, [
-							E('option', { 'value': 'online', 'selected': 'selected' }, [ _('Online Only') ]),
-							E('option', { 'value': 'all' }, [ _('All Members') ]),
-							E('option', { 'value': 'offline' }, [ _('Offline Only') ])
+							E('option', { 'value': 'online', 'selected': (self.statusFilter || 'online') === 'online' ? 'selected' : null }, [ _('Online Only') ]),
+							E('option', { 'value': 'all', 'selected': self.statusFilter === 'all' ? 'selected' : null }, [ _('All Members') ]),
+							E('option', { 'value': 'offline', 'selected': self.statusFilter === 'offline' ? 'selected' : null }, [ _('Offline Only') ])
 						])
 					]),
 					E('div', { 'class': 'ztc-filterfield ztc-filterfield-grow' }, [
