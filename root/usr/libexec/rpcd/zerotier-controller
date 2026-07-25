@@ -1,14 +1,37 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 
-if [ "$1" = "call" ] && [ -z "${ZT_RPC_INPUT+x}" ]; then
-	export ZT_RPC_INPUT="$(cat)"
+ztc_input_file=""
+clean_ztc_tmp() {
+	[ -n "$ztc_input_file" ] && [ -f "$ztc_input_file" ] && rm -f "$ztc_input_file"
+}
+trap clean_ztc_tmp EXIT INT TERM
+
+if [ "$1" = "call" ] && [ -z "${ZT_RPC_INPUT_FILE:-}" ]; then
+	ztc_input_file="$(mktemp /tmp/ztc_in.XXXXXX)" || exit 1
+	cat > "$ztc_input_file"
+	export ZT_RPC_INPUT_FILE="$ztc_input_file"
 fi
 
 if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
-	if ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"; then
-		exit 0
+	ucode_out="$(mktemp /tmp/ztc_out.XXXXXX 2>/dev/null)" || ucode_out=""
+	if [ -n "$ucode_out" ]; then
+		if ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@" < "${ZT_RPC_INPUT_FILE:-/dev/null}" > "$ucode_out" 2>/dev/null; then
+			if jq -e . "$ucode_out" >/dev/null 2>&1; then
+				cat "$ucode_out"
+				rm -f "$ucode_out"
+				exit 0
+			fi
+		fi
+		rm -f "$ucode_out"
 	fi
+
+	case "$2" in
+		create_network|update_ip_pool|authorize_member|change_member_ip|rename_member|add_route|del_route|delete_member|import_backup)
+			echo '{"error": "ucode execution failed for mutating operation"}'
+			exit 1
+			;;
+	esac
 fi
 
 get_token() {
@@ -94,8 +117,8 @@ parse_ipv4_cidr() {
 
 read_rpc_input() {
 	rpc_method="$1"
-	if [ -n "${ZT_RPC_INPUT+x}" ]; then
-		input="$ZT_RPC_INPUT"
+	if [ -n "${ZT_RPC_INPUT_FILE:-}" ] && [ -f "$ZT_RPC_INPUT_FILE" ]; then
+		input="$(cat "$ZT_RPC_INPUT_FILE")"
 	else
 		input=''
 		IFS= read -r input || input=""

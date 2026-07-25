@@ -133,7 +133,8 @@ function get_storage_info() {
 }
 
 function read_rpc_input() {
-	let input_str = getenv('ZT_RPC_INPUT');
+	let path = getenv('ZT_RPC_INPUT_FILE');
+	let input_str = path ? readfile(path) : null;
 	if (input_str == null || trim(input_str) == '')
 		input_str = readfile('/dev/stdin') || '';
 	if (!input_str || trim(input_str) == '') return {};
