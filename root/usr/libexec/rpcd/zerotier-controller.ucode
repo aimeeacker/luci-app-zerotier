@@ -137,7 +137,9 @@ function read_rpc_input() {
 	return json(input_str) || {};
 }
 
-function is_peer_online(peer) {
+function is_peer_online(peer, nodeid, nwid) {
+	if (nwid && nodeid && valid_nodeid(nodeid) && lc(nodeid) == lc(substr(nwid, 0, 10)))
+		return true;
 	if (!peer || type(peer) != 'object') return false;
 	if (peer.latency != null && int(peer.latency) >= 0) return true;
 	let paths = peer.paths || [];
@@ -175,9 +177,9 @@ if (action == 'list') {
 
 if (action == 'call') {
 	let input = read_rpc_input();
-	let storage = get_storage_info();
 
 	if (method == 'status') {
+		let storage = get_storage_info();
 		let node_res = zt_api('GET', '/status');
 		if (node_res.error) {
 			print(sprintf('%J\n', {
@@ -344,9 +346,12 @@ if (action == 'call') {
 		if (peers_list.error) peers_list = [];
 
 		let online_peers_map = {};
+		let ctrl_nodeid = lc(substr(nwid, 0, 10));
+		online_peers_map[ctrl_nodeid] = true;
+
 		if (type(peers_list) == 'array') {
 			for (let peer in peers_list) {
-				if (peer.address && is_peer_online(peer))
+				if (peer.address && is_peer_online(peer, peer.address, nwid))
 					online_peers_map[lc(peer.address)] = true;
 			}
 		}
