@@ -70,6 +70,19 @@ run_tests_for_target() {
 	printf '%s' "$zt_members_all" | jq -e '
 		(.members | length) == 3
 	' >/dev/null
+
+	zt_backup="$(printf '%s\n' '{"nwid":"8056c2e21c000001"}' | $target_cmd call export_backup)"
+	printf '%s' "$zt_backup" | jq -e '
+		.nwid == "8056c2e21c000001" and
+		(.backup_time | type == "string") and
+		.network.id == "8056c2e21c000001" and
+		(.members | type == "object")
+	' >/dev/null
+
+	zt_import="$(jq -n --argjson b "$zt_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import" | jq -e '
+		.restored == true and (.nwid | type == "string")
+	' >/dev/null
 }
 
 run_tests_for_target "$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller"

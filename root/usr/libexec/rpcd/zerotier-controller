@@ -542,16 +542,15 @@ case "$1" in
 					if has_error "$net"; then printf '%s\n' "$net"; exit 0; fi
 					if has_error "$members_map"; then printf '%s\n' "$members_map"; exit 0; fi
 
-					# Build array of full member objects
-					members_arr="[]"
+					members_obj="{}"
 					for nodeid in $(printf '%s' "$members_map" | jq -r 'keys[]?'); do
 						m_detail="$(zt_api GET "/controller/network/$nwid/member/$nodeid")"
 						if ! has_error "$m_detail"; then
-							members_arr="$(printf '%s' "$members_arr" | jq --argjson m "$m_detail" '. + [$m]')"
+							members_obj="$(printf '%s' "$members_obj" | jq --arg nid "$nodeid" --argjson m "$m_detail" '. + {($nid): $m}')"
 						fi
 					done
-					
-					jq -n --arg nwid "$nwid" --argjson net "$net" --argjson members "$members_arr" '{
+
+					jq -n --arg nwid "$nwid" --argjson net "$net" --argjson members "$members_obj" '{
 						nwid: $nwid,
 						backup_time: (now | strftime("%Y-%m-%d %H:%M:%S")),
 						network: $net,
@@ -571,39 +570,45 @@ case "$1" in
 					echo '{"error": "Backup payload exceeds 2 MB limit"}'
 					exit 0
 				fi
-				
-				nwid="$(printf '%s' "$backup_json" | jq -r '.nwid // empty')"
+
 				net_config="$(printf '%s' "$backup_json" | jq -c '.network // empty')"
-				
-				if ! valid_nwid "$nwid" || [ -z "$net_config" ]; then
+				if [ -z "$net_config" ] || [ "$net_config" = "null" ]; then
 					echo '{"error": "invalid backup format"}'
 					exit 0
 				fi
 
-				# Push network config
-				network_result="$(zt_api POST "/controller/network/$nwid" "$net_config")"
+				network_result="$(zt_api POST "/controller/network" "$net_config")"
 				if has_error "$network_result"; then printf '%s\n' "$network_result"; exit 0; fi
+				new_nwid="$(printf '%s' "$network_result" | jq -r '.id // .nwid // empty')"
+				if ! valid_nwid "$new_nwid"; then
+					new_nwid="$(printf '%s' "$backup_json" | jq -r '.nwid // .network.id // .network.nwid // empty')"
+				fi
 
-				# Push members
 				members_file="$(mktemp /tmp/zerotier-controller-import.XXXXXX)" || {
-					json_error "failed to create temporary import file" POST "/controller/network/$nwid/member" 0
+					json_error "failed to create temporary import file" POST "/controller/network/member" 0
 					exit 0
 				}
-				printf '%s' "$backup_json" | jq -c '.members[]?' > "$members_file"
-				while IFS= read -r member; do
-					m_id="$(printf '%s' "$member" | jq -r '.id // empty')"
-					if valid_nodeid "$m_id"; then
-						member_result="$(zt_api POST "/controller/network/$nwid/member/$m_id" "$member")"
-						if has_error "$member_result"; then
-							rm -f "$members_file"
-							printf '%s\n' "$member_result"
-							exit 0
-						fi
+
+				printf '%s' "$backup_json" | jq -c '
+					if (.members | type) == "object" then
+						.members | to_entries[] | { id: .key, config: .value }
+					elif (.members | type) == "array" then
+						.members[] | { id: (.id // .nodeId), config: . }
+					else
+						empty
+					end
+				' > "$members_file" 2>/dev/null
+
+				while IFS= read -r item; do
+					m_id="$(printf '%s' "$item" | jq -r '.id // empty')"
+					m_cfg="$(printf '%s' "$item" | jq -c '.config // empty')"
+					if valid_nodeid "$m_id" && [ -n "$m_cfg" ] && [ "$m_cfg" != "null" ]; then
+						zt_api POST "/controller/network/$new_nwid/member/$m_id" "$m_cfg" >/dev/null 2>&1 || true
 					fi
 				done < "$members_file"
 				rm -f "$members_file"
-				
-				echo "{\"success\": true, \"nwid\": \"$nwid\"}"
+
+				echo "{\"nwid\": \"$new_nwid\", \"restored\": true}"
 				;;
 			*)
 				echo '{"error": "Unknown ubus method"}'

@@ -477,7 +477,12 @@ if (action == 'call') {
 				if (!m.error) members[nodeid] = m;
 			}
 		}
-		print(sprintf('%J\n', { network: net_detail, members: members }));
+		print(sprintf('%J\n', {
+			nwid: nwid,
+			backup_time: sprintf('%s', strftime('%Y-%m-%d %H:%M:%S')),
+			network: net_detail,
+			members: members
+		}));
 		exit(0);
 	}
 
@@ -488,22 +493,34 @@ if (action == 'call') {
 			exit(0);
 		}
 		let backup = json(backup_str);
-		if (!backup || !backup.network) {
+		if (!backup || type(backup) != 'object' || !backup.network) {
 			print('{"error": "invalid backup payload"}\n');
 			exit(0);
 		}
 		let net = backup.network;
-		let nwid = net.id || net.nwid;
+		let orig_nwid = backup.nwid || net.id || net.nwid;
 		let create_res = zt_api('POST', '/controller/network', net);
 		if (create_res.error) {
 			print(sprintf('%J\n', create_res));
 			exit(0);
 		}
-		let new_nwid = create_res.id || create_res.nwid || nwid;
-		let members = backup.members || {};
-		for (let nodeid in keys(members)) {
-			let m = members[nodeid];
-			if (m) zt_api('POST', '/controller/network/' + new_nwid + '/member/' + nodeid, m);
+		let new_nwid = create_res.id || create_res.nwid || orig_nwid;
+		let members = backup.members;
+		if (type(members) == 'object') {
+			for (let k in keys(members)) {
+				if (valid_nodeid(k)) {
+					let m = members[k];
+					if (m) zt_api('POST', '/controller/network/' + new_nwid + '/member/' + k, m);
+				}
+			}
+		} else if (type(members) == 'array') {
+			for (let m in members) {
+				if (type(m) == 'object') {
+					let nodeid = m.id || m.nodeId;
+					if (valid_nodeid(nodeid))
+						zt_api('POST', '/controller/network/' + new_nwid + '/member/' + nodeid, m);
+				}
+			}
 		}
 		print(sprintf('%J\n', { nwid: new_nwid, restored: true }));
 		exit(0);
