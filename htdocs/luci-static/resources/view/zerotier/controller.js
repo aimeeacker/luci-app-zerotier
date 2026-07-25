@@ -536,8 +536,10 @@ return view.extend({
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
-										callImportBackup(e.target.result).then(requireRpcResult).then(function() {
-											showNotification(_('Network backup restored successfully.'), 'success');
+										callImportBackup(e.target.result).then(requireRpcResult).then(function(res) {
+											if (!res.restored || !res.nwid)
+												throw new Error(_('Controller did not return a network ID'));
+											showNotification(_('Network backup restored successfully.') + ' (' + res.nwid + ')', 'success');
 											window.setTimeout(function() { window.location.reload(); }, 700);
 										}).catch(handleRpcError);
 									};

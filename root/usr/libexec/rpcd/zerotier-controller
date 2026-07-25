@@ -13,10 +13,14 @@ if [ "$1" = "call" ] && [ -z "${ZT_RPC_INPUT_FILE:-}" ]; then
 	export ZT_RPC_INPUT_FILE="$ztc_input_file"
 fi
 
-if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
+ucode_script="${ZT_UCODE_SCRIPT:-/usr/libexec/rpcd/zerotier-controller.ucode}"
+ucode_bin="${ZT_UCODE_BIN:-ucode}"
+if [ -f "$ucode_script" ] &&
+	command -v "$ucode_bin" >/dev/null 2>&1 &&
+	"$ucode_bin" -e "import * as fs from 'fs';" >/dev/null 2>&1; then
 	ucode_out="$(mktemp /tmp/ztc_out.XXXXXX 2>/dev/null)" || ucode_out=""
 	if [ -n "$ucode_out" ]; then
-		if ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@" < "${ZT_RPC_INPUT_FILE:-/dev/null}" > "$ucode_out" 2>/dev/null; then
+		if "$ucode_bin" "$ucode_script" "$@" < "${ZT_RPC_INPUT_FILE:-/dev/null}" > "$ucode_out" 2>/dev/null; then
 			if jq -e . "$ucode_out" >/dev/null 2>&1; then
 				cat "$ucode_out"
 				rm -f "$ucode_out"
@@ -541,13 +545,16 @@ case "$1" in
 					members_map="$(zt_api GET "/controller/network/$nwid/member")"
 					if has_error "$net"; then printf '%s\n' "$net"; exit 0; fi
 					if has_error "$members_map"; then printf '%s\n' "$members_map"; exit 0; fi
+					if ! printf '%s' "$members_map" | jq -e 'type == "object"' >/dev/null 2>&1; then
+						echo '{"error": "controller returned an invalid member index"}'
+						exit 0
+					fi
 
 					members_obj="{}"
 					for nodeid in $(printf '%s' "$members_map" | jq -r 'keys[]?'); do
 						m_detail="$(zt_api GET "/controller/network/$nwid/member/$nodeid")"
-						if ! has_error "$m_detail"; then
-							members_obj="$(printf '%s' "$members_obj" | jq --arg nid "$nodeid" --argjson m "$m_detail" '. + {($nid): $m}')"
-						fi
+						if has_error "$m_detail"; then printf '%s\n' "$m_detail"; exit 0; fi
+						members_obj="$(printf '%s' "$members_obj" | jq --arg nid "$nodeid" --argjson m "$m_detail" '. + {($nid): $m}')"
 					done
 
 					jq -n --arg nwid "$nwid" --argjson net "$net" --argjson members "$members_obj" '{
@@ -571,44 +578,138 @@ case "$1" in
 					exit 0
 				fi
 
-				net_config="$(printf '%s' "$backup_json" | jq -c '.network // empty')"
-				if [ -z "$net_config" ] || [ "$net_config" = "null" ]; then
+				if ! printf '%s' "$backup_json" | jq -e '
+					type == "object" and
+					(.network | type) == "object" and
+					((.members | type) == "object" or (.members | type) == "array")
+				' >/dev/null 2>&1; then
 					echo '{"error": "invalid backup format"}'
 					exit 0
 				fi
 
-				network_result="$(zt_api POST "/controller/network" "$net_config")"
-				if has_error "$network_result"; then printf '%s\n' "$network_result"; exit 0; fi
-				new_nwid="$(printf '%s' "$network_result" | jq -r '.id // .nwid // empty')"
-				if ! valid_nwid "$new_nwid"; then
-					new_nwid="$(printf '%s' "$backup_json" | jq -r '.nwid // .network.id // .network.nwid // empty')"
+				nwid="$(printf '%s' "$backup_json" | jq -r '
+					(.nwid // .network.id // .network.nwid // empty) |
+					if type == "string" then . else empty end
+				')"
+				net_config="$(printf '%s' "$backup_json" | jq -c '.network')"
+				if ! valid_nwid "$nwid"; then
+					echo '{"error": "backup does not contain a valid network ID"}'
+					exit 0
+				fi
+				if ! printf '%s' "$backup_json" | jq -e --arg nwid "$nwid" '
+					[.nwid?, .network.id?, .network.nwid?] |
+					map(select(. != null)) |
+					all(.[];
+						type == "string" and
+						ascii_downcase == ($nwid | ascii_downcase)
+					)
+				' >/dev/null 2>&1; then
+					echo '{"error": "backup contains conflicting network IDs"}'
+					exit 0
 				fi
 
 				members_file="$(mktemp /tmp/zerotier-controller-import.XXXXXX)" || {
-					json_error "failed to create temporary import file" POST "/controller/network/member" 0
+					json_error "failed to create temporary import file" POST "/controller/network/$nwid/member" 0
 					exit 0
 				}
 
-				printf '%s' "$backup_json" | jq -c '
+				if ! printf '%s' "$backup_json" | jq -c '
+					def valid_nodeid:
+						type == "string" and test("^[0-9a-fA-F]{10}$");
 					if (.members | type) == "object" then
-						.members | to_entries[] | { id: .key, config: .value }
+						.members | to_entries |
+						if all(.[]; (.key | valid_nodeid) and ((.value | type) == "object")) then
+							.[] | { id: .key, config: .value }
+						else
+							error("invalid member entry")
+						end
 					elif (.members | type) == "array" then
-						.members[] | { id: (.id // .nodeId), config: . }
+						.members |
+						if all(.[]; (type == "object") and ((.id // .nodeId) | valid_nodeid)) then
+							.[] | { id: (.id // .nodeId), config: . }
+						else
+							error("invalid member entry")
+						end
 					else
-						empty
+						error("invalid members collection")
 					end
-				' > "$members_file" 2>/dev/null
+				' > "$members_file" 2>/dev/null; then
+					rm -f "$members_file"
+					echo '{"error": "backup contains an invalid member entry"}'
+					exit 0
+				fi
 
+				member_count="$(wc -l < "$members_file" | tr -d ' ')"
+				case "$member_count" in *[!0-9]*|'') member_count=0 ;; esac
+
+				controller_status="$(zt_api GET /status)"
+				if has_error "$controller_status"; then
+					rm -f "$members_file"
+					printf '%s\n' "$controller_status"
+					exit 0
+				fi
+				controller_nodeid="$(printf '%s' "$controller_status" | jq -r '
+					.address // empty | if type == "string" then ascii_downcase else empty end
+				')"
+				backup_controller_nodeid="$(printf '%.10s' "$nwid" | tr '[:upper:]' '[:lower:]')"
+				if ! valid_nodeid "$controller_nodeid" || [ "$controller_nodeid" != "$backup_controller_nodeid" ]; then
+					rm -f "$members_file"
+					jq -cn \
+						--arg nwid "$nwid" \
+						--arg controller_nodeid "$controller_nodeid" \
+						'{ error: "backup network ID belongs to a different controller identity", nwid: $nwid, controller_nodeid: $controller_nodeid, restored: false }'
+					exit 0
+				fi
+
+				network_result="$(zt_api POST "/controller/network/$nwid" "$net_config")"
+				if has_error "$network_result"; then
+					rm -f "$members_file"
+					printf '%s\n' "$network_result"
+					exit 0
+				fi
+				restored_nwid="$(printf '%s' "$network_result" | jq -r '
+					(.id // .nwid // empty) |
+					if type == "string" then . else empty end
+				')"
+				if ! valid_nwid "$restored_nwid" ||
+					[ "$(printf '%s' "$restored_nwid" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwid" | tr '[:upper:]' '[:lower:]')" ]; then
+					rm -f "$members_file"
+					jq -cn \
+						--arg nwid "$nwid" \
+						--arg returned_nwid "$restored_nwid" \
+						'{ error: "controller did not restore the requested network ID", nwid: $nwid, returned_nwid: $returned_nwid, restored: false }'
+					exit 0
+				fi
+
+				restored_members=0
 				while IFS= read -r item; do
 					m_id="$(printf '%s' "$item" | jq -r '.id // empty')"
-					m_cfg="$(printf '%s' "$item" | jq -c '.config // empty')"
-					if valid_nodeid "$m_id" && [ -n "$m_cfg" ] && [ "$m_cfg" != "null" ]; then
-						zt_api POST "/controller/network/$new_nwid/member/$m_id" "$m_cfg" >/dev/null 2>&1 || true
+					m_cfg="$(printf '%s' "$item" | jq -c '.config')"
+					member_result="$(zt_api POST "/controller/network/$nwid/member/$m_id" "$m_cfg")"
+					if has_error "$member_result"; then
+						rm -f "$members_file"
+						printf '%s' "$member_result" | jq -c \
+							--arg nwid "$nwid" \
+							--arg failed_member "$m_id" \
+							--argjson restored_members "$restored_members" \
+							--argjson total_members "$member_count" \
+							'. + {
+								nwid: $nwid,
+								restored: false,
+								failed_member: $failed_member,
+								restored_members: $restored_members,
+								total_members: $total_members
+							}'
+						exit 0
 					fi
+					restored_members=$((restored_members + 1))
 				done < "$members_file"
 				rm -f "$members_file"
 
-				echo "{\"nwid\": \"$new_nwid\", \"restored\": true}"
+				jq -cn \
+					--arg nwid "$nwid" \
+					--argjson restored_members "$restored_members" \
+					'{ nwid: $nwid, restored: true, restored_members: $restored_members }'
 				;;
 			*)
 				echo '{"error": "Unknown ubus method"}'

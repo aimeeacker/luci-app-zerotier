@@ -3,6 +3,7 @@ method=GET
 body_file=''
 data=''
 url=''
+http_status=200
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -14,6 +15,8 @@ while [ "$#" -gt 0 ]; do
 		*) shift ;;
 	esac
 done
+
+[ -n "${ZT_TEST_REQUEST_LOG:-}" ] && printf '%s %s\n' "$method" "$url" >> "$ZT_TEST_REQUEST_LOG"
 
 case "$method $url" in
 	"GET http://127.0.0.1:9993/status")
@@ -38,7 +41,12 @@ case "$method $url" in
 		body='{"id":"bab1e61f17","name":"online_node","authorized":true}'
 		;;
 	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/dead100000")
-		body='{"id":"dead100000","name":"offline_node","authorized":false}'
+		if [ "${ZT_TEST_FAIL_MEMBER_GET:-}" = "dead100000" ]; then
+			body='{"error":"mock member read failed"}'
+			http_status=500
+		else
+			body='{"id":"dead100000","name":"offline_node","authorized":false}'
+		fi
 		;;
 	"GET http://127.0.0.1:9993/peer")
 		body='[{"address":"bab1e61f17","latency":20,"paths":[{"active":true}]}]'
@@ -49,7 +57,20 @@ case "$method $url" in
 		;;
 	"POST http://127.0.0.1:9993/controller/network/8056c2e21c000001")
 		printf '%s' "$data" > "$ZT_TEST_PAYLOAD"
-		body="$data"
+		if [ -n "${ZT_TEST_NETWORK_RESPONSE:-}" ]; then
+			body="$ZT_TEST_NETWORK_RESPONSE"
+		else
+			body="$data"
+		fi
+		;;
+	"POST http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/"*)
+		member_id="${url##*/}"
+		if [ "${ZT_TEST_FAIL_MEMBER:-}" = "$member_id" ]; then
+			body='{"error":"mock member restore failed"}'
+			http_status=500
+		else
+			body="$data"
+		fi
 		;;
 	*)
 		body='{"error":"unexpected mock request"}'
@@ -58,7 +79,7 @@ esac
 
 if [ -n "$body_file" ]; then
 	printf '%s' "$body" > "$body_file"
-	printf '200'
+	printf '%s' "$http_status"
 else
-	printf '%s\n200' "$body"
+	printf '%s\n%s' "$body" "$http_status"
 fi

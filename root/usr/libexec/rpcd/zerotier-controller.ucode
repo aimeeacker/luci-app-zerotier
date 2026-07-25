@@ -1,7 +1,7 @@
 #!/usr/bin/ucode
 /* SPDX-License-Identifier: Apache-2.0 */
 
-import { readfile, popen, stat, statvfs, open, unlink, access } from 'fs';
+import { readfile, popen, stat, statvfs, mkstemp, access } from 'fs';
 
 function trim(s) {
 	return s ? replace(s, /^[\s\r\n]+|[\s\r\n]+$/g, '') : '';
@@ -29,6 +29,12 @@ function valid_nwid(nwid) {
 
 function valid_nodeid(nodeid) {
 	return type(nodeid) == 'string' && match(nodeid, /^[0-9a-fA-F]{10}$/) != null;
+}
+
+function backup_timestamp() {
+	let tm = gmtime();
+	return sprintf('%04d-%02d-%02d %02d:%02d:%02d',
+		tm.year, tm.mon, tm.mday, tm.hour, tm.min, tm.sec);
 }
 
 function ipv4_from_int(val) {
@@ -107,12 +113,10 @@ function zt_api(method, path, data) {
 
 function check_dir_writable(dir) {
 	if (!dir || !stat(dir)) return false;
-	let test_file = dir + '/.ztc_write_test_' + sprintf('%d', int(rand() * 100000));
-	let f = open(test_file, 'w');
+	let f = mkstemp(dir + '/.ztc_write_test_XXXXXX');
 	if (!f) return false;
 	f.write('test');
 	f.close();
-	unlink(test_file);
 	return true;
 }
 
@@ -155,8 +159,8 @@ function is_peer_online(peer, nodeid, nwid) {
 	return false;
 }
 
-let action = ARGV[1];
-let method = ARGV[2];
+let action = ARGV[0];
+let method = ARGV[1];
 
 if (action == 'list') {
 	let methods = {
@@ -267,8 +271,9 @@ if (action == 'call') {
 		let name = trim(input.name) || 'new_network';
 		let cidr = trim(input.cidr);
 		if (!cidr) {
-			let r1 = int(rand() * 120) + 100;
-			let r2 = int(rand() * 250) + 1;
+			let seed = int(time());
+			let r1 = (seed % 120) + 100;
+			let r2 = (int(seed / 120) % 250) + 1;
 			cidr = sprintf('10.%d.%d.0/24', r1, r2);
 		}
 		let parsed = parse_ipv4_cidr(cidr);
@@ -316,8 +321,13 @@ if (action == 'call') {
 		}
 		push(new_routes, { target: parsed.normalized, via: null });
 
+		let v4_assign_mode = net_json.v4AssignMode;
+		if (type(v4_assign_mode) != 'object')
+			v4_assign_mode = {};
+		v4_assign_mode.zt = true;
+
 		let payload = {
-			v4AssignMode: (net_json.v4AssignMode || {}) + { zt: true },
+			v4AssignMode: v4_assign_mode,
 			ipAssignmentPools: [{ ipRangeStart: parsed.first, ipRangeEnd: parsed.last }],
 			routes: new_routes
 		};
@@ -470,16 +480,26 @@ if (action == 'call') {
 			exit(0);
 		}
 		let members_index = zt_api('GET', '/controller/network/' + nwid + '/member');
+		if (members_index.error) {
+			print(sprintf('%J\n', members_index));
+			exit(0);
+		}
+		if (type(members_index) != 'object') {
+			print('{"error": "controller returned an invalid member index"}\n');
+			exit(0);
+		}
 		let members = {};
-		if (!members_index.error && type(members_index) == 'object') {
-			for (let nodeid in keys(members_index)) {
-				let m = zt_api('GET', '/controller/network/' + nwid + '/member/' + nodeid);
-				if (!m.error) members[nodeid] = m;
+		for (let nodeid in keys(members_index)) {
+			let m = zt_api('GET', '/controller/network/' + nwid + '/member/' + nodeid);
+			if (m.error) {
+				print(sprintf('%J\n', m));
+				exit(0);
 			}
+			members[nodeid] = m;
 		}
 		print(sprintf('%J\n', {
 			nwid: nwid,
-			backup_time: sprintf('%s', strftime('%Y-%m-%d %H:%M:%S')),
+			backup_time: backup_timestamp(),
 			network: net_detail,
 			members: members
 		}));
@@ -498,31 +518,105 @@ if (action == 'call') {
 			exit(0);
 		}
 		let net = backup.network;
-		let orig_nwid = backup.nwid || net.id || net.nwid;
-		let create_res = zt_api('POST', '/controller/network', net);
-		if (create_res.error) {
-			print(sprintf('%J\n', create_res));
+		if (type(net) != 'object') {
+			print('{"error": "invalid backup payload"}\n');
 			exit(0);
 		}
-		let new_nwid = create_res.id || create_res.nwid || orig_nwid;
+		let nwid = backup.nwid || net.id || net.nwid;
+		if (!valid_nwid(nwid)) {
+			print('{"error": "backup does not contain a valid network ID"}\n');
+			exit(0);
+		}
+		for (let candidate in [backup.nwid, net.id, net.nwid]) {
+			if (candidate != null &&
+			    (!valid_nwid(candidate) || lc(candidate) != lc(nwid))) {
+				print('{"error": "backup contains conflicting network IDs"}\n');
+				exit(0);
+			}
+		}
+
 		let members = backup.members;
+		let member_items = [];
 		if (type(members) == 'object') {
 			for (let k in keys(members)) {
-				if (valid_nodeid(k)) {
-					let m = members[k];
-					if (m) zt_api('POST', '/controller/network/' + new_nwid + '/member/' + k, m);
+				let m = members[k];
+				if (!valid_nodeid(k) || type(m) != 'object') {
+					print('{"error": "backup contains an invalid member entry"}\n');
+					exit(0);
 				}
+				push(member_items, { id: k, config: m });
 			}
 		} else if (type(members) == 'array') {
 			for (let m in members) {
-				if (type(m) == 'object') {
-					let nodeid = m.id || m.nodeId;
-					if (valid_nodeid(nodeid))
-						zt_api('POST', '/controller/network/' + new_nwid + '/member/' + nodeid, m);
+				let nodeid = type(m) == 'object' ? (m.id || m.nodeId) : null;
+				if (!valid_nodeid(nodeid)) {
+					print('{"error": "backup contains an invalid member entry"}\n');
+					exit(0);
 				}
+				push(member_items, { id: nodeid, config: m });
 			}
+		} else {
+			print('{"error": "invalid backup payload"}\n');
+			exit(0);
 		}
-		print(sprintf('%J\n', { nwid: new_nwid, restored: true }));
+
+		let status_res = zt_api('GET', '/status');
+		if (status_res.error) {
+			print(sprintf('%J\n', status_res));
+			exit(0);
+		}
+		let controller_nodeid = status_res.address;
+		if (!valid_nodeid(controller_nodeid) ||
+		    lc(controller_nodeid) != lc(substr(nwid, 0, 10))) {
+			print(sprintf('%J\n', {
+				error: 'backup network ID belongs to a different controller identity',
+				nwid: nwid,
+				controller_nodeid: controller_nodeid || '',
+				restored: false
+			}));
+			exit(0);
+		}
+
+		let network_res = zt_api('POST', '/controller/network/' + nwid, net);
+		if (network_res.error) {
+			print(sprintf('%J\n', network_res));
+			exit(0);
+		}
+		let restored_nwid = network_res.id || network_res.nwid;
+		if (!valid_nwid(restored_nwid) || lc(restored_nwid) != lc(nwid)) {
+			print(sprintf('%J\n', {
+				error: 'controller did not restore the requested network ID',
+				nwid: nwid,
+				returned_nwid: restored_nwid || '',
+				restored: false
+			}));
+			exit(0);
+		}
+
+		let restored_members = 0;
+		for (let item in member_items) {
+			let member_res = zt_api('POST', '/controller/network/' + nwid + '/member/' + item.id, item.config);
+			if (member_res.error) {
+				print(sprintf('%J\n', {
+					error: member_res.error,
+					method: member_res.method || 'POST',
+					path: member_res.path || ('/controller/network/' + nwid + '/member/' + item.id),
+					http_status: member_res.http_status || 0,
+					nwid: nwid,
+					restored: false,
+					failed_member: item.id,
+					restored_members: restored_members,
+					total_members: length(member_items)
+				}));
+				exit(0);
+			}
+			restored_members++;
+		}
+		print(sprintf('%J\n', {
+			nwid: nwid,
+			restored: true,
+			restored_members: restored_members
+		}));
 		exit(0);
 	}
 }

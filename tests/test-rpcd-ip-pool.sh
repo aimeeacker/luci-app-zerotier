@@ -5,6 +5,8 @@ zt_test_repo="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 zt_test_dir="$(mktemp -d /tmp/zerotier-controller-test.XXXXXX)"
 zt_test_bin="$zt_test_dir/bin"
 zt_test_payload="$zt_test_dir/payload.json"
+zt_test_request_log="$zt_test_dir/requests.log"
+zt_test_ucode_log="$zt_test_dir/ucode.log"
 mkdir -p "$zt_test_bin"
 trap 'rm -rf "$zt_test_dir"' EXIT
 ln -s "$zt_test_repo/tests/fixtures/mock-curl" "$zt_test_bin/curl"
@@ -12,6 +14,10 @@ ln -s "$zt_test_repo/tests/fixtures/mock-curl" "$zt_test_bin/curl"
 export PATH="$zt_test_bin:$PATH"
 export ZT_CONTROLLER_TOKEN=test-token
 export ZT_TEST_PAYLOAD="$zt_test_payload"
+export ZT_TEST_REQUEST_LOG="$zt_test_request_log"
+export ZT_TEST_UCODE_LOG="$zt_test_ucode_log"
+export ZT_UCODE_BIN="$zt_test_repo/tests/fixtures/mock-ucode"
+export ZT_UCODE_SCRIPT="$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller.ucode"
 
 run_tests_for_target() {
 	target_cmd="$1"
@@ -79,15 +85,80 @@ run_tests_for_target() {
 		(.members | type == "object")
 	' >/dev/null
 
+	: > "$zt_test_request_log"
 	zt_import="$(jq -n --argjson b "$zt_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
 	printf '%s' "$zt_import" | jq -e '
-		.restored == true and (.nwid | type == "string")
+		.restored == true and
+		.nwid == "8056c2e21c000001" and
+		.restored_members == 3
+	' >/dev/null
+	grep -Fx 'POST http://127.0.0.1:9993/controller/network/8056c2e21c000001' "$zt_test_request_log" >/dev/null
+	if grep -Fx 'POST http://127.0.0.1:9993/controller/network' "$zt_test_request_log" >/dev/null; then
+		echo 'Backup import unexpectedly created a new network' >&2
+		exit 1
+	fi
+
+	export ZT_TEST_FAIL_MEMBER=dead100000
+	zt_import_member_failure="$(jq -n --argjson b "$zt_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	unset ZT_TEST_FAIL_MEMBER
+	printf '%s' "$zt_import_member_failure" | jq -e '
+		.restored == false and
+		.failed_member == "dead100000" and
+		.restored_members == 2 and
+		.total_members == 3 and
+		(.error | contains("mock member restore failed"))
+	' >/dev/null
+
+	export ZT_TEST_NETWORK_RESPONSE='{"id":"8056c2e21c000002"}'
+	zt_import_wrong_nwid="$(jq -n --argjson b "$zt_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	unset ZT_TEST_NETWORK_RESPONSE
+	printf '%s' "$zt_import_wrong_nwid" | jq -e '
+		.restored == false and
+		.nwid == "8056c2e21c000001" and
+		.returned_nwid == "8056c2e21c000002" and
+		(.error | contains("requested network ID"))
+	' >/dev/null
+
+	zt_invalid_member_backup="$(printf '%s' "$zt_backup" | jq '.members.invalid = {"authorized": true}')"
+	: > "$zt_test_request_log"
+	zt_import_invalid_member="$(jq -n --argjson b "$zt_invalid_member_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_invalid_member" | jq -e '
+		.restored != true and (.error | contains("invalid member"))
+	' >/dev/null
+	if grep -F 'POST http://127.0.0.1:9993/controller/network/' "$zt_test_request_log" >/dev/null; then
+		echo 'Invalid member backup mutated the controller' >&2
+		exit 1
+	fi
+
+	zt_conflicting_nwid_backup="$(printf '%s' "$zt_backup" | jq '.network.id = "8056c2e21c000002"')"
+	zt_import_conflicting_nwid="$(jq -n --argjson b "$zt_conflicting_nwid_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_conflicting_nwid" | jq -e '
+		.restored != true and (.error | contains("conflicting network IDs"))
+	' >/dev/null
+
+	zt_other_controller_backup="$(printf '%s' "$zt_backup" | jq '
+		.nwid = "aaaaaaaaaa000001" |
+		.network.id = "aaaaaaaaaa000001" |
+		.network.nwid = "aaaaaaaaaa000001"
+	')"
+	zt_import_other_controller="$(jq -n --argjson b "$zt_other_controller_backup" '{ backup_data: ($b | tojson) }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_other_controller" | jq -e '
+		.restored == false and (.error | contains("different controller identity"))
+	' >/dev/null
+
+	export ZT_TEST_FAIL_MEMBER_GET=dead100000
+	zt_export_member_failure="$(printf '%s\n' '{"nwid":"8056c2e21c000001"}' | $target_cmd call export_backup)"
+	unset ZT_TEST_FAIL_MEMBER_GET
+	printf '%s' "$zt_export_member_failure" | jq -e '
+		.error | contains("mock member read failed")
 	' >/dev/null
 }
 
 run_tests_for_target "$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller"
+grep -F "import * as fs from 'fs';" "$zt_test_ucode_log" >/dev/null
 
 if command -v ucode >/dev/null 2>&1; then
+	unset ZT_UCODE_BIN ZT_UCODE_SCRIPT
 	run_tests_for_target "ucode $zt_test_repo/root/usr/libexec/rpcd/zerotier-controller.ucode"
 fi
 
