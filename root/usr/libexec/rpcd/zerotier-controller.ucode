@@ -2,19 +2,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 import { readfile, popen, stat, statvfs, open, unlink, access } from 'fs';
-import { getenv } from 'os';
 
 function trim(s) {
 	return s ? replace(s, /^[\s\r\n]+|[\s\r\n]+$/g, '') : '';
-}
-
-function lc(s) {
-	return s ? replace(String(s), /[A-Z]/g, (c) => lc_char(c)) : '';
-}
-
-function lc_char(c) {
-	let code = ord(c);
-	return (code >= 65 && code <= 90) ? chr(code + 32) : c;
 }
 
 function get_token() {

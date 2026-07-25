@@ -2,9 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if [ -f /usr/libexec/rpcd/zerotier-controller.ucode ] && command -v ucode >/dev/null 2>&1; then
-	if ucode -c /usr/libexec/rpcd/zerotier-controller.ucode >/dev/null 2>&1; then
-		exec ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"
-	fi
+	exec ucode /usr/libexec/rpcd/zerotier-controller.ucode "$@"
 fi
 
 get_token() {
@@ -380,7 +378,13 @@ case "$1" in
 
 				online_peers=""
 				if [ "$online_only" = "true" ]; then
-					online_peers="$(printf '%s' "$peers_list" | jq -r '.[]? | select((.latency // -1) >= 0 or (((.paths // []) | map(select(.active == true or .preferred == true))) | length > 0)) | (.address // empty) | ascii_downcase')"
+					online_peers="$(printf '%s' "$peers_list" | jq -r '
+						[ .[]?
+						  | select((.latency // -1) >= 0 or (((.paths // []) | map(select(.active == true or .preferred == true))) | length > 0))
+						  | (.address // empty)
+						  | ascii_downcase
+						] | join(" ")
+					' 2>/dev/null)"
 				fi
 
 				members_list='[]'

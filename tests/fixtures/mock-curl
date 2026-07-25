@@ -22,6 +22,18 @@ case "$method $url" in
 	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001")
 		body='{"id":"8056c2e21c000001","name":"home_zj","v4AssignMode":{"zt":false},"routes":[{"target":"10.10.10.0/24","via":null},{"target":"192.168.50.0/24","via":"10.10.10.1"},{"target":"10.200.0.0/16","via":null}]}'
 		;;
+	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member")
+		body='{"bab1e61f17":1720000000,"dead100000":1700000000}'
+		;;
+	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/bab1e61f17")
+		body='{"id":"bab1e61f17","name":"online_node","authorized":true}'
+		;;
+	"GET http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/dead100000")
+		body='{"id":"dead100000","name":"offline_node","authorized":false}'
+		;;
+	"GET http://127.0.0.1:9993/peer")
+		body='[{"address":"bab1e61f17","latency":20,"paths":[{"active":true}]}]'
+		;;
 	"POST http://127.0.0.1:9993/controller/network")
 		printf '%s' "$data" > "$ZT_TEST_PAYLOAD"
 		body='{"id":"8056c2e21c000002"}'

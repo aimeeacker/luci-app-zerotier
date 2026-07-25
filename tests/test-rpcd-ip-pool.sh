@@ -66,7 +66,13 @@ printf '%s' "$zt_status" | jq -e '
 zt_members_online="$(printf '%s\n' '{"nwid":"8056c2e21c000001","online_only":true}' |
 	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call list_members)"
 printf '%s' "$zt_members_online" | jq -e '
-	.members != null and .peers != null
+	(.members | length) == 1 and .members[0].id == "bab1e61f17"
+' >/dev/null
+
+zt_members_all="$(printf '%s\n' '{"nwid":"8056c2e21c000001","online_only":false}' |
+	"$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call list_members)"
+printf '%s' "$zt_members_all" | jq -e '
+	(.members | length) == 2
 ' >/dev/null
 
 echo 'rpcd Controller tests passed'
