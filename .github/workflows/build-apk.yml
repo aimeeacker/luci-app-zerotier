@@ -58,6 +58,7 @@ jobs:
             -DZLIB_SUPPORT=OFF -DDIGEST_SUPPORT=OFF
           cmake --build "$RUNNER_TEMP/ucode/build" --parallel
           sudo cmake --install "$RUNNER_TEMP/ucode/build"
+          sudo ldconfig
           ucode -e 'import { mkdtemp, writefile, unlink, rmdir } from "fs"; print("ucode runtime ready\n");'
 
       - name: Validate LuCI and rpcd source
