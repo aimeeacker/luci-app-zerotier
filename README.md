@@ -40,11 +40,13 @@ Controller 页面通过本机 `127.0.0.1:9993` API 工作，不需要 Docker、N
 - `luci-app-zerotier-*.apk`
 - `luci-i18n-zerotier-zh-cn-*.apk`
 
-工作流只发布上述两个 LuCI 包；SDK 在解析 `+zerotier` 运行时依赖时仍会
-编译 ZeroTier 守护进程及其依赖链，但这些产物不会进入发布物。SDK 压缩包
-与依赖编译结果均按 sha256 缓存（actions/cache），SDK 下载支持低速自动
-切换镜像（NJU/SJTUG/PKU）。首次部署内置 Controller 时，仍需另行安装
-启用了 `ZT_NONFREE=1` 的 ZeroTier 二进制包。
+工作流只发布上述两个 LuCI 包；CI 会在 SDK 内的拷贝上剥离 `+zerotier`
+运行时依赖（仓库 Makefile 保持不变），因此不编译 ZeroTier 守护进程及其
+依赖链，产物也不声明对 zerotier 的硬依赖——顺带避免 apk 自动拉取不带
+Controller 的官方 zerotier 包覆盖手动安装的 `ZT_NONFREE` 版本。SDK
+压缩包与依赖编译结果均按 sha256 缓存（actions/cache），SDK 下载支持
+低速自动切换镜像（NJU/SJTUG/PKU）。首次部署内置 Controller 时，仍需
+另行安装启用了 `ZT_NONFREE=1` 的 ZeroTier 二进制包。
 
 二维码由浏览器端的 `qrcode-generator`（MIT License）本地生成，不依赖外部服务。
 

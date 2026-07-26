@@ -193,6 +193,19 @@ jobs:
             --exclude='output' \
             ./ sdk/package/luci-app-zerotier/
 
+          # Strip the zerotier runtime dependency from the SDK copy only (the
+          # repo Makefile keeps it): otherwise defconfig selects zerotier and
+          # the SDK compiles its whole target closure (iproute2, iptables,
+          # ZeroTierOne, ...) that never enters the published artifacts. As a
+          # bonus the sideloaded apk no longer hard-depends on zerotier, so
+          # apk cannot auto-install the official non-Controller build over a
+          # manually installed ZT_NONFREE one.
+          sed -i 's/^LUCI_DEPENDS:=+zerotier +curl +jq$/LUCI_DEPENDS:=+curl +jq/' sdk/package/luci-app-zerotier/Makefile
+          if ! grep -q '^LUCI_DEPENDS:=+curl +jq$' sdk/package/luci-app-zerotier/Makefile; then
+            echo "Failed to strip the zerotier dependency from the SDK copy" >&2
+            exit 1
+          fi
+
       - name: Configure LuCI packages
         working-directory: sdk
         run: |
@@ -237,6 +250,11 @@ jobs:
             fi
           done
 
+          if grep -q '^CONFIG_PACKAGE_zerotier=[ym]$' .config; then
+            echo "zerotier target package must not be selected in the LuCI-only build" >&2
+            exit 1
+          fi
+
           selected_packages="$(awk '/^CONFIG_PACKAGE_.*=[ym]$/ { count++ } END { print count + 0 }' .config)"
           echo "Selected packages ($selected_packages):"
           if [ "$selected_packages" -gt 128 ]; then
@@ -252,7 +270,8 @@ jobs:
           path: |
             sdk/build_dir
             sdk/staging_dir
-          key: sdk-build-v2-${{ env.SDK_SHA256 }}
+            sdk/dl
+          key: sdk-build-v3-${{ env.SDK_SHA256 }}
 
       - name: Build LuCI application and Simplified Chinese translation
         working-directory: sdk
@@ -298,7 +317,7 @@ jobs:
             "SDK download source: $SDK_RESOLVED_BASE" \
             "Target: ImmortalWrt 25.12 x86/64" \
             "Build scope: LuCI application and Simplified Chinese translation only" \
-            "ZeroTier daemon/Controller binary: compiled as SDK dependency, not shipped" \
+            "ZeroTier daemon/Controller binary: not built (runtime dependency stripped in CI)" \
             "Packages: luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
 
           (
