@@ -173,6 +173,12 @@ jobs:
           ./scripts/feeds install -p packages zerotier luasrcdiet
           ./scripts/feeds install -p luci luci-base csstidy
 
+          # Buildroot embeds an md5 of each package dir (paths + mtimes) in
+          # its .prepared stamp file name. Freshly cloned feeds get clone-time
+          # mtimes, which would rename every stamp and defeat the restored
+          # build cache, so pin the whole feed tree to a fixed timestamp.
+          find feeds/ -type f -exec touch -d '2020-01-01 00:00:00 UTC' {} +
+
       - name: Add LuCI package to SDK
         run: |
           if [ -L sdk/package/feeds/luci/luci-app-zerotier ]; then
@@ -246,7 +252,7 @@ jobs:
           path: |
             sdk/build_dir
             sdk/staging_dir
-          key: sdk-build-v1-${{ env.SDK_SHA256 }}
+          key: sdk-build-v2-${{ env.SDK_SHA256 }}
 
       - name: Build LuCI application and Simplified Chinese translation
         working-directory: sdk
