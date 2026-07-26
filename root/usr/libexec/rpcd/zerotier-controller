@@ -15,9 +15,11 @@ fi
 
 ucode_script="${ZT_UCODE_SCRIPT:-/usr/libexec/rpcd/zerotier-controller.ucode}"
 ucode_bin="${ZT_UCODE_BIN:-ucode}"
+# Probe the exact fs imports the ucode implementation needs so that devices
+# with an older fs module fall back to this shell implementation entirely.
 if [ -f "$ucode_script" ] &&
 	command -v "$ucode_bin" >/dev/null 2>&1 &&
-	"$ucode_bin" -e "import * as fs from 'fs';" >/dev/null 2>&1; then
+	"$ucode_bin" -e "import { readfile, popen, stat, statvfs, mkstemp, mkdtemp, writefile, unlink, rmdir } from 'fs';" >/dev/null 2>&1; then
 	ucode_out="$(mktemp /tmp/ztc_out.XXXXXX 2>/dev/null)" || ucode_out=""
 	if [ -n "$ucode_out" ]; then
 		if "$ucode_bin" "$ucode_script" "$@" < "${ZT_RPC_INPUT_FILE:-/dev/null}" > "$ucode_out" 2>/dev/null; then
@@ -150,18 +152,37 @@ zt_api() {
 		return
 	}
 
+	# The token and payload travel through 0600 temp files instead of argv so
+	# they never show up in /proc/*/cmdline and the payload size is not capped
+	# by execve argument limits.
+	header_file="$(mktemp /tmp/zerotier-controller.XXXXXX)" || {
+		rm -f "$body_file"
+		json_error "failed to create temporary header file" "$method" "$path" 0
+		return
+	}
+	printf 'X-ZT1-AUTH: %s\n' "$token" > "$header_file"
+
 	if [ -n "$data" ]; then
+		data_file="$(mktemp /tmp/zerotier-controller.XXXXXX)" || {
+			rm -f "$body_file" "$header_file"
+			json_error "failed to create temporary payload file" "$method" "$path" 0
+			return
+		}
+		printf 'Content-Type: application/json\n' >> "$header_file"
+		printf '%s' "$data" > "$data_file"
 		http_status="$(curl -sS -o "$body_file" -w '%{http_code}' -X "$method" \
-			-H "X-ZT1-AUTH: $token" \
-			-H "Content-Type: application/json" \
-			-d "$data" \
+			-H "@$header_file" \
+			--data-binary "@$data_file" \
 			"http://127.0.0.1:9993$path")"
+		curl_status="$?"
+		rm -f "$data_file"
 	else
 		http_status="$(curl -sS -o "$body_file" -w '%{http_code}' -X "$method" \
-			-H "X-ZT1-AUTH: $token" \
+			-H "@$header_file" \
 			"http://127.0.0.1:9993$path")"
+		curl_status="$?"
 	fi
-	curl_status="$?"
+	rm -f "$header_file"
 	body="$(cat "$body_file")"
 	rm -f "$body_file"
 
@@ -209,7 +230,7 @@ case "$1" in
 		echo '  "del_route": { "nwid": "string", "target": "string" },'
 		echo '  "delete_member": { "nwid": "string", "nodeid": "string" },'
 		echo '  "export_backup": { "nwid": "string" },'
-		echo '  "import_backup": { "backup_data": "string" }'
+		echo '  "import_backup": { "backup_data": "string", "mode": "string" }'
 		echo '}'
 		;;
 	call)
@@ -241,28 +262,31 @@ case "$1" in
 				if has_error "$node_status"; then
 					jq -cn \
 						--argjson node "$node_status" \
+						--arg zt_dir "$zt_dir" \
 						--argjson token_present "$token_present" \
 						--argjson storage_writable "$storage_writable" \
 						--argjson free_space "$free_space" \
-						'$node + { online: false, controller: false, databaseReady: false, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
+						'$node + { online: false, controller: false, databaseReady: false, storagePath: (if $zt_dir == "" then null else $zt_dir end), tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 				else
 					controller_status="$(zt_api GET /controller)"
 					if has_error "$controller_status"; then
 						jq -cn \
 							--argjson node "$node_status" \
 							--argjson controller_error "$controller_status" \
+							--arg zt_dir "$zt_dir" \
 							--argjson token_present "$token_present" \
 							--argjson storage_writable "$storage_writable" \
 							--argjson free_space "$free_space" \
-							'$node + { controller: false, databaseReady: false, controllerError: $controller_error.error, controllerHttpStatus: $controller_error.http_status, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
+							'$node + { controller: false, databaseReady: false, controllerError: $controller_error.error, controllerHttpStatus: $controller_error.http_status, storagePath: (if $zt_dir == "" then null else $zt_dir end), tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 					else
 						jq -cn \
 							--argjson node "$node_status" \
 							--argjson controller_status "$controller_status" \
+							--arg zt_dir "$zt_dir" \
 							--argjson token_present "$token_present" \
 							--argjson storage_writable "$storage_writable" \
 							--argjson free_space "$free_space" \
-							'$node + { controller: ($controller_status.controller == true), databaseReady: ($controller_status.databaseReady == true), controllerApiVersion: $controller_status.apiVersion, tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
+							'$node + { controller: ($controller_status.controller == true), databaseReady: ($controller_status.databaseReady == true), controllerApiVersion: $controller_status.apiVersion, storagePath: (if $zt_dir == "" then null else $zt_dir end), tokenPresent: $token_present, storageWritable: $storage_writable, freeSpaceBytes: $free_space }'
 					fi
 				fi
 				;;
@@ -310,7 +334,8 @@ case "$1" in
 				;;
 			create_network)
 				if ! read_rpc_input create_network; then exit 0; fi
-				name="$(printf '%s' "$input" | jq -r '(.name // "network") | tostring')"
+				name="$(printf '%s' "$input" | jq -r '(.name // "") | tostring')"
+				[ -n "$name" ] || name="new_network"
 				cidr="$(printf '%s' "$input" | jq -r '(.cidr // "") | tostring')"
 
 				# Keep backward compatibility for callers that omit CIDR while allowing
@@ -497,10 +522,12 @@ case "$1" in
 						printf '%s\n' "$net_json"
 						exit 0
 					fi
+					# Replace any existing route for the same target instead of
+					# appending a duplicate (same semantics as the ucode engine).
 					if [ -z "$via" ] || [ "$via" = "null" ]; then
-						new_routes="$(printf '%s' "$net_json" | jq --arg t "$target" '(.routes // []) + [{"target": $t, "via": null}]')"
+						new_routes="$(printf '%s' "$net_json" | jq --arg t "$target" '[ (.routes // [])[] | select(.target != $t) ] + [{"target": $t, "via": null}]')"
 					else
-						new_routes="$(printf '%s' "$net_json" | jq --arg t "$target" --arg v "$via" '(.routes // []) + [{"target": $t, "via": $v}]')"
+						new_routes="$(printf '%s' "$net_json" | jq --arg t "$target" --arg v "$via" '[ (.routes // [])[] | select(.target != $t) ] + [{"target": $t, "via": $v}]')"
 					fi
 					payload="$(jq -cn --argjson routes "$new_routes" '{ routes: $routes }')"
 					zt_api POST "/controller/network/$nwid" "$payload"
@@ -568,6 +595,14 @@ case "$1" in
 			import_backup)
 				if ! read_rpc_input import_backup; then exit 0; fi
 				backup_json="$(printf '%s' "$input" | jq -r '.backup_data // empty')"
+				import_mode="$(printf '%s' "$input" | jq -r '(.mode // "restore") | tostring')"
+				case "$import_mode" in
+					restore|migrate) ;;
+					*)
+						echo '{"error": "invalid import mode, expected restore or migrate"}'
+						exit 0
+						;;
+				esac
 				if [ -z "$backup_json" ]; then
 					echo '{"error": "missing backup data"}'
 					exit 0
@@ -651,17 +686,32 @@ case "$1" in
 				controller_nodeid="$(printf '%s' "$controller_status" | jq -r '
 					.address // empty | if type == "string" then ascii_downcase else empty end
 				')"
-				backup_controller_nodeid="$(printf '%.10s' "$nwid" | tr '[:upper:]' '[:lower:]')"
-				if ! valid_nodeid "$controller_nodeid" || [ "$controller_nodeid" != "$backup_controller_nodeid" ]; then
+				if ! valid_nodeid "$controller_nodeid"; then
 					rm -f "$members_file"
-					jq -cn \
-						--arg nwid "$nwid" \
-						--arg controller_nodeid "$controller_nodeid" \
-						'{ error: "backup network ID belongs to a different controller identity", nwid: $nwid, controller_nodeid: $controller_nodeid, restored: false }'
+					echo '{"error": "controller node ID is unavailable"}'
 					exit 0
 				fi
 
-				network_result="$(zt_api POST "/controller/network/$nwid" "$net_config")"
+				if [ "$import_mode" = "restore" ]; then
+					backup_controller_nodeid="$(printf '%.10s' "$nwid" | tr '[:upper:]' '[:lower:]')"
+					if [ "$controller_nodeid" != "$backup_controller_nodeid" ]; then
+						rm -f "$members_file"
+						jq -cn \
+							--arg nwid "$nwid" \
+							--arg controller_nodeid "$controller_nodeid" \
+							'{ error: "backup network ID belongs to a different controller identity, switch the import mode to migrate to import it as a new network", nwid: $nwid, controller_nodeid: $controller_nodeid, restored: false }'
+						exit 0
+					fi
+					create_path="/controller/network/$nwid"
+					net_payload="$net_config"
+				else
+					# Migrate: let this controller assign a fresh network ID and
+					# drop the identity of the foreign network from the payload.
+					create_path="/controller/network/${controller_nodeid}______"
+					net_payload="$(printf '%s' "$net_config" | jq -c 'del(.id, .nwid)')"
+				fi
+
+				network_result="$(zt_api POST "$create_path" "$net_payload")"
 				if has_error "$network_result"; then
 					rm -f "$members_file"
 					printf '%s\n' "$network_result"
@@ -671,30 +721,52 @@ case "$1" in
 					(.id // .nwid // empty) |
 					if type == "string" then . else empty end
 				')"
-				if ! valid_nwid "$restored_nwid" ||
-					[ "$(printf '%s' "$restored_nwid" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwid" | tr '[:upper:]' '[:lower:]')" ]; then
-					rm -f "$members_file"
-					jq -cn \
-						--arg nwid "$nwid" \
-						--arg returned_nwid "$restored_nwid" \
-						'{ error: "controller did not restore the requested network ID", nwid: $nwid, returned_nwid: $returned_nwid, restored: false }'
-					exit 0
+				if [ "$import_mode" = "restore" ]; then
+					if ! valid_nwid "$restored_nwid" ||
+						[ "$(printf '%s' "$restored_nwid" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwid" | tr '[:upper:]' '[:lower:]')" ]; then
+						rm -f "$members_file"
+						jq -cn \
+							--arg nwid "$nwid" \
+							--arg returned_nwid "$restored_nwid" \
+							'{ error: "controller did not restore the requested network ID", nwid: $nwid, returned_nwid: $returned_nwid, restored: false }'
+						exit 0
+					fi
+					target_nwid="$nwid"
+				else
+					if ! valid_nwid "$restored_nwid" ||
+						[ "$(printf '%.10s' "$restored_nwid" | tr '[:upper:]' '[:lower:]')" != "$controller_nodeid" ]; then
+						rm -f "$members_file"
+						jq -cn \
+							--arg nwid "$nwid" \
+							--arg returned_nwid "$restored_nwid" \
+							'{ error: "controller did not assign a network ID owned by this controller", nwid: $nwid, returned_nwid: $returned_nwid, restored: false }'
+						exit 0
+					fi
+					target_nwid="$restored_nwid"
 				fi
 
 				restored_members=0
 				while IFS= read -r item; do
 					m_id="$(printf '%s' "$item" | jq -r '.id // empty')"
-					m_cfg="$(printf '%s' "$item" | jq -c '.config')"
-					member_result="$(zt_api POST "/controller/network/$nwid/member/$m_id" "$m_cfg")"
+					if [ "$import_mode" = "restore" ]; then
+						m_cfg="$(printf '%s' "$item" | jq -c '.config')"
+					else
+						m_cfg="$(printf '%s' "$item" | jq -c '.config | del(.nwid)')"
+					fi
+					member_result="$(zt_api POST "/controller/network/$target_nwid/member/$m_id" "$m_cfg")"
 					if has_error "$member_result"; then
 						rm -f "$members_file"
 						printf '%s' "$member_result" | jq -c \
-							--arg nwid "$nwid" \
+							--arg nwid "$target_nwid" \
+							--arg source_nwid "$nwid" \
+							--arg mode "$import_mode" \
 							--arg failed_member "$m_id" \
 							--argjson restored_members "$restored_members" \
 							--argjson total_members "$member_count" \
 							'. + {
 								nwid: $nwid,
+								source_nwid: $source_nwid,
+								mode: $mode,
 								restored: false,
 								failed_member: $failed_member,
 								restored_members: $restored_members,
@@ -707,9 +779,11 @@ case "$1" in
 				rm -f "$members_file"
 
 				jq -cn \
-					--arg nwid "$nwid" \
+					--arg nwid "$target_nwid" \
+					--arg source_nwid "$nwid" \
+					--arg mode "$import_mode" \
 					--argjson restored_members "$restored_members" \
-					'{ nwid: $nwid, restored: true, restored_members: $restored_members }'
+					'{ nwid: $nwid, source_nwid: $source_nwid, mode: $mode, restored: true, restored_members: $restored_members }'
 				;;
 			*)
 				echo '{"error": "Unknown ubus method"}'

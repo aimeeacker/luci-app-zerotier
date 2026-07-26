@@ -12,7 +12,8 @@ return view.extend({
 	load: function() {
 		return fs.exec('/sbin/ifconfig').then(function(res) {
 			if (res.code !== 0 || !res.stdout || res.stdout.trim() === '') {
-				ui.addNotification(null, E('p', {}, _('Unable to get interface info: %s.').format(res.message)));
+				ui.addNotification(null, E('p', {}, _('Unable to get interface info: %s.').format(
+					String(res.stderr || '').trim() || _('unknown error'))));
 				return [];
 			}
 
@@ -27,7 +28,8 @@ return view.extend({
 				return results.map(function(result, index) {
 					if (result.code !== 0 || !result.stdout || result.stdout.trim() === '') {
 						ui.addNotification(null, E('p', {},
-							_('Unable to get interface %s info: %s.').format(interfaces[index], result.message)));
+							_('Unable to get interface %s info: %s.').format(interfaces[index],
+								String(result.stderr || '').trim() || _('unknown error'))));
 						return null;
 					}
 

@@ -10,13 +10,28 @@
 - 查看 ZeroTier 虚拟接口状态。
 - 管理本机内置 Controller 的网络、成员、授权、IP 和路由。
 - 在 Controller 页面直接编辑托管 IPv4 CIDR、地址池和对应直连路由。
-- 导入、导出 Controller 网络 JSON 备份。
+- 导入、导出 Controller 网络 JSON 备份，支持恢复与迁移两种导入模式。
 - 在网络概览中生成可供 ZeroTier 移动端扫描的加入二维码。
 - 自适应 LuCI 页面和移动端布局。
 - 独立生成简体中文语言包。
 
 Controller 页面通过本机 `127.0.0.1:9993` API 工作，不需要 Docker、Node.js
 或外部数据库。rpcd 适配层只依赖 `curl` 和 `jq`。
+
+## 备份与恢复
+
+导出的 JSON 备份包含网络配置和全部成员，但**不包含控制器身份**
+（`identity.secret`）。导入时有两种模式：
+
+- **恢复（restore，默认）**：保留原网络 ID 覆盖写回。由于网络 ID 前 10 位
+  就是控制器节点 ID，此模式只能在生成该备份的控制器上使用。
+- **迁移（migrate）**：在当前控制器上生成新的网络 ID 并导入全部成员，
+  适用于跨控制器搬迁网络。迁移后各成员需要重新加入新的网络 ID。
+
+如需完整的灾难恢复（重装系统后按原网络 ID 恢复），除 JSON 备份外还必须
+另行备份 ZeroTier 数据目录中的身份文件（如
+`/var/lib/zerotier-one/identity.secret`），否则重装后节点 ID 改变，只能
+使用迁移模式导入。
 
 ## GitHub Actions 构建
 

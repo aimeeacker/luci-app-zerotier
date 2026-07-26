@@ -1,10 +1,23 @@
 #!/usr/bin/ucode
 /* SPDX-License-Identifier: Apache-2.0 */
 
-import { readfile, popen, stat, statvfs, mkstemp, access } from 'fs';
+import { readfile, popen, stat, statvfs, mkstemp, mkdtemp, writefile, unlink, rmdir } from 'fs';
 
 function trim(s) {
-	return s ? replace(s, /^[\s\r\n]+|[\s\r\n]+$/g, '') : '';
+	return s ? replace(s, /^\s+|\s+$/g, '') : '';
+}
+
+// json() raises an exception on malformed input; callers here always want
+// null for anything unparseable instead of aborting the whole request.
+function safe_json(s) {
+	if (type(s) != 'string' || trim(s) == '')
+		return null;
+	try {
+		return json(s);
+	}
+	catch (e) {
+		return null;
+	}
 }
 
 function get_token() {
@@ -77,19 +90,47 @@ function zt_api(method, path, data) {
 	if (!token)
 		return json_error('authtoken.secret not found', method, path, 0);
 
-	let cmd = sprintf("curl -sS -w '\\n%%{http_code}' -X %s -H %s", shell_escape(method), shell_escape('X-ZT1-AUTH: ' + token));
+	// The token and payload travel through files inside a 0700 temp directory
+	// so neither shows up in the process list and the payload size is not
+	// capped by execve argument limits.
+	let workdir = mkdtemp('/tmp/ztc_api_XXXXXX');
+	if (!workdir)
+		return json_error('failed to create temporary directory', method, path, 0);
+
+	let header_path = workdir + '/headers';
+	let payload_path = workdir + '/payload';
+	let headers = 'X-ZT1-AUTH: ' + token + '\n';
+	let cmd = sprintf("curl -sS -w '\\n%%{http_code}' -X %s -H %s", shell_escape(method), shell_escape('@' + header_path));
 	if (data != null) {
 		let payload = (type(data) == 'string') ? data : sprintf('%J', data);
-		cmd += sprintf(" -H 'Content-Type: application/json' -d %s", shell_escape(payload));
+		headers += 'Content-Type: application/json\n';
+		if (writefile(payload_path, payload) == null) {
+			rmdir(workdir);
+			return json_error('failed to write temporary payload file', method, path, 0);
+		}
+		cmd += sprintf(' --data-binary %s', shell_escape('@' + payload_path));
 	}
-	cmd += sprintf(" %s", shell_escape('http://127.0.0.1:9993' + path));
+	cmd += sprintf(' %s', shell_escape('http://127.0.0.1:9993' + path));
+
+	if (writefile(header_path, headers) == null) {
+		if (data != null)
+			unlink(payload_path);
+		rmdir(workdir);
+		return json_error('failed to write temporary header file', method, path, 0);
+	}
 
 	let proc = popen(cmd, 'r');
+	let output = '';
+	if (proc) {
+		output = proc.read('all') || '';
+		proc.close();
+	}
+	unlink(header_path);
+	if (data != null)
+		unlink(payload_path);
+	rmdir(workdir);
 	if (!proc)
 		return json_error('failed to execute curl', method, path, 0);
-
-	let output = proc.read('all') || '';
-	proc.close();
 
 	let lines = split(output, '\n');
 	let http_code = 0;
@@ -102,10 +143,10 @@ function zt_api(method, path, data) {
 	if (http_code >= 200 && http_code < 300) {
 		if (!body_str || trim(body_str) == '')
 			return {};
-		let parsed = json(body_str);
+		let parsed = safe_json(body_str);
 		return (parsed != null) ? parsed : json_error('ZeroTier API returned invalid JSON', method, path, http_code);
 	} else {
-		let err_obj = json(body_str);
+		let err_obj = safe_json(body_str);
 		let msg = (type(err_obj) == 'object') ? (err_obj.error || err_obj.message || err_obj.description) : null;
 		return json_error(msg || 'ZeroTier API request failed', method, path, http_code);
 	}
@@ -141,8 +182,7 @@ function read_rpc_input() {
 	let input_str = path ? readfile(path) : null;
 	if (input_str == null || trim(input_str) == '')
 		input_str = readfile('/dev/stdin') || '';
-	if (!input_str || trim(input_str) == '') return {};
-	return json(input_str) || {};
+	return safe_json(input_str) || {};
 }
 
 function is_peer_online(peer, nodeid, nwid) {
@@ -177,7 +217,7 @@ if (action == 'list') {
 		del_route: { nwid: 'string', target: 'string' },
 		delete_member: { nwid: 'string', nodeid: 'string' },
 		export_backup: { nwid: 'string' },
-		import_backup: { backup_data: 'string' }
+		import_backup: { backup_data: 'string', mode: 'string' }
 	};
 	print(sprintf('%J\n', methods));
 	exit(0);
@@ -508,11 +548,16 @@ if (action == 'call') {
 
 	if (method == 'import_backup') {
 		let backup_str = input.backup_data || '';
+		let mode = (input.mode == null || input.mode == '') ? 'restore' : input.mode;
+		if (mode != 'restore' && mode != 'migrate') {
+			print('{"error": "invalid import mode, expected restore or migrate"}\n');
+			exit(0);
+		}
 		if (length(backup_str) > 2097152) {
 			print('{"error": "Backup payload exceeds 2 MB limit"}\n');
 			exit(0);
 		}
-		let backup = json(backup_str);
+		let backup = safe_json(backup_str);
 		if (!backup || type(backup) != 'object' || !backup.network) {
 			print('{"error": "invalid backup payload"}\n');
 			exit(0);
@@ -566,43 +611,79 @@ if (action == 'call') {
 			exit(0);
 		}
 		let controller_nodeid = status_res.address;
-		if (!valid_nodeid(controller_nodeid) ||
-		    lc(controller_nodeid) != lc(substr(nwid, 0, 10))) {
-			print(sprintf('%J\n', {
-				error: 'backup network ID belongs to a different controller identity',
-				nwid: nwid,
-				controller_nodeid: controller_nodeid || '',
-				restored: false
-			}));
+		if (!valid_nodeid(controller_nodeid)) {
+			print('{"error": "controller node ID is unavailable"}\n');
 			exit(0);
 		}
+		controller_nodeid = lc(controller_nodeid);
 
-		let network_res = zt_api('POST', '/controller/network/' + nwid, net);
+		let create_path;
+		if (mode == 'restore') {
+			if (controller_nodeid != lc(substr(nwid, 0, 10))) {
+				print(sprintf('%J\n', {
+					error: 'backup network ID belongs to a different controller identity, switch the import mode to migrate to import it as a new network',
+					nwid: nwid,
+					controller_nodeid: controller_nodeid,
+					restored: false
+				}));
+				exit(0);
+			}
+			create_path = '/controller/network/' + nwid;
+		}
+		else {
+			// Migrate: let this controller assign a fresh network ID and drop
+			// the identity of the foreign network from the payload.
+			create_path = '/controller/network/' + controller_nodeid + '______';
+			delete net.id;
+			delete net.nwid;
+		}
+
+		let network_res = zt_api('POST', create_path, net);
 		if (network_res.error) {
 			print(sprintf('%J\n', network_res));
 			exit(0);
 		}
 		let restored_nwid = network_res.id || network_res.nwid;
-		if (!valid_nwid(restored_nwid) || lc(restored_nwid) != lc(nwid)) {
-			print(sprintf('%J\n', {
-				error: 'controller did not restore the requested network ID',
-				nwid: nwid,
-				returned_nwid: restored_nwid || '',
-				restored: false
-			}));
-			exit(0);
+		let target_nwid;
+		if (mode == 'restore') {
+			if (!valid_nwid(restored_nwid) || lc(restored_nwid) != lc(nwid)) {
+				print(sprintf('%J\n', {
+					error: 'controller did not restore the requested network ID',
+					nwid: nwid,
+					returned_nwid: restored_nwid || '',
+					restored: false
+				}));
+				exit(0);
+			}
+			target_nwid = nwid;
+		}
+		else {
+			if (!valid_nwid(restored_nwid) || lc(substr(restored_nwid, 0, 10)) != controller_nodeid) {
+				print(sprintf('%J\n', {
+					error: 'controller did not assign a network ID owned by this controller',
+					nwid: nwid,
+					returned_nwid: restored_nwid || '',
+					restored: false
+				}));
+				exit(0);
+			}
+			target_nwid = restored_nwid;
 		}
 
 		let restored_members = 0;
 		for (let item in member_items) {
-			let member_res = zt_api('POST', '/controller/network/' + nwid + '/member/' + item.id, item.config);
+			if (mode == 'migrate')
+				delete item.config.nwid;
+			let member_res = zt_api('POST', '/controller/network/' + target_nwid + '/member/' + item.id, item.config);
 			if (member_res.error) {
 				print(sprintf('%J\n', {
 					error: member_res.error,
 					method: member_res.method || 'POST',
-					path: member_res.path || ('/controller/network/' + nwid + '/member/' + item.id),
+					path: member_res.path || ('/controller/network/' + target_nwid + '/member/' + item.id),
 					http_status: member_res.http_status || 0,
-					nwid: nwid,
+					nwid: target_nwid,
+					source_nwid: nwid,
+					mode: mode,
 					restored: false,
 					failed_member: item.id,
 					restored_members: restored_members,
@@ -613,7 +694,9 @@ if (action == 'call') {
 			restored_members++;
 		}
 		print(sprintf('%J\n', {
-			nwid: nwid,
+			nwid: target_nwid,
+			source_nwid: nwid,
+			mode: mode,
 			restored: true,
 			restored_members: restored_members
 		}));

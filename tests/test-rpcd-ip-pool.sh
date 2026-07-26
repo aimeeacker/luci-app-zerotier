@@ -90,6 +90,8 @@ run_tests_for_target() {
 	printf '%s' "$zt_import" | jq -e '
 		.restored == true and
 		.nwid == "8056c2e21c000001" and
+		.source_nwid == "8056c2e21c000001" and
+		.mode == "restore" and
 		.restored_members == 3
 	' >/dev/null
 	grep -Fx 'POST http://127.0.0.1:9993/controller/network/8056c2e21c000001' "$zt_test_request_log" >/dev/null
@@ -136,6 +138,16 @@ run_tests_for_target() {
 		.restored != true and (.error | contains("conflicting network IDs"))
 	' >/dev/null
 
+	zt_import_bad_json="$(printf '%s\n' '{"backup_data":"not json"}' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_bad_json" | jq -e '
+		.restored != true and (.error | test("invalid backup"))
+	' >/dev/null
+
+	zt_import_bad_mode="$(jq -n --argjson b "$zt_backup" '{ backup_data: ($b | tojson), mode: "clone" }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_bad_mode" | jq -e '
+		.restored != true and (.error | contains("invalid import mode"))
+	' >/dev/null
+
 	zt_other_controller_backup="$(printf '%s' "$zt_backup" | jq '
 		.nwid = "aaaaaaaaaa000001" |
 		.network.id = "aaaaaaaaaa000001" |
@@ -146,6 +158,20 @@ run_tests_for_target() {
 		.restored == false and (.error | contains("different controller identity"))
 	' >/dev/null
 
+	: > "$zt_test_request_log"
+	zt_import_migrate="$(jq -n --argjson b "$zt_other_controller_backup" '{ backup_data: ($b | tojson), mode: "migrate" }' | $target_cmd call import_backup)"
+	printf '%s' "$zt_import_migrate" | jq -e '
+		.restored == true and
+		.mode == "migrate" and
+		.nwid == "8056c2e21c000002" and
+		.source_nwid == "aaaaaaaaaa000001" and
+		.restored_members == 3
+	' >/dev/null
+	grep -Fx 'POST http://127.0.0.1:9993/controller/network/8056c2e21c______' "$zt_test_request_log" >/dev/null
+	jq -e '
+		.id == null and .nwid == null and .name == "home_zj"
+	' "$zt_test_payload" >/dev/null
+
 	export ZT_TEST_FAIL_MEMBER_GET=dead100000
 	zt_export_member_failure="$(printf '%s\n' '{"nwid":"8056c2e21c000001"}' | $target_cmd call export_backup)"
 	unset ZT_TEST_FAIL_MEMBER_GET
@@ -155,11 +181,19 @@ run_tests_for_target() {
 }
 
 run_tests_for_target "$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller"
-grep -F "import * as fs from 'fs';" "$zt_test_ucode_log" >/dev/null
+grep -F "import { readfile, popen, stat, statvfs, mkstemp, mkdtemp, writefile, unlink, rmdir } from 'fs';" "$zt_test_ucode_log" >/dev/null
 
 if command -v ucode >/dev/null 2>&1; then
-	unset ZT_UCODE_BIN ZT_UCODE_SCRIPT
+	unset ZT_UCODE_BIN
+
 	run_tests_for_target "ucode $zt_test_repo/root/usr/libexec/rpcd/zerotier-controller.ucode"
+
+	# Wrapper integration: the rpcd entry script must hand requests to the real
+	# ucode engine. The sentinel below relies on the two implementations using
+	# distinct invalid-backup error texts (ucode: "payload", shell: "format").
+	run_tests_for_target "$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller"
+	zt_engine_probe="$(printf '%s\n' '{"backup_data":"not json"}' | "$zt_test_repo/root/usr/libexec/rpcd/zerotier-controller" call import_backup)"
+	printf '%s' "$zt_engine_probe" | jq -e '.error == "invalid backup payload"' >/dev/null
 fi
 
 echo 'rpcd Controller tests passed'

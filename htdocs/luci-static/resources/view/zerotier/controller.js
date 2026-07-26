@@ -86,7 +86,7 @@ var callExportBackup = rpc.declare({
 var callImportBackup = rpc.declare({
 	object: 'zerotier-controller',
 	method: 'import_backup',
-	params: [ 'backup_data' ]
+	params: [ 'backup_data', 'mode' ]
 });
 
 function rpcErrorMessage(res) {
@@ -97,6 +97,9 @@ function rpcErrorMessage(res) {
 	var httpStatus = res.http_status || res.controllerHttpStatus;
 	if (httpStatus)
 		message += ' (HTTP ' + httpStatus + ')';
+	if (res.failed_member)
+		message += ' — ' + _('Failed at member %s (%d of %d imported).').format(
+			res.failed_member, res.restored_members || 0, res.total_members || 0);
 
 	return message;
 }
@@ -519,12 +522,18 @@ return view.extend({
 						E('h3', {}, [ _('Import JSON Backup') ]),
 						E('div', { 'class': 'cbi-value ztc-field' }, [
 							E('input', { 'type': 'file', 'id': 'backup-file-input', 'class': 'ztc-full ztc-stack-input', 'accept': '.json' }),
+							E('select', { 'id': 'backup-mode-select', 'class': 'ztc-full ztc-stack-input' }, [
+								E('option', { 'value': 'restore' }, [ _('Restore (overwrite, keep original network ID)') ]),
+								E('option', { 'value': 'migrate' }, [ _('Migrate (new network ID on this controller)') ])
+							]),
 							E('button', {
 								'class': 'btn cbi-button-action ztc-full',
 								'disabled': controllerReady ? null : 'disabled',
 								'click': function(ev) {
 									ev.preventDefault();
 									var fileInput = document.getElementById('backup-file-input');
+									var modeSelect = document.getElementById('backup-mode-select');
+									var mode = (modeSelect && modeSelect.value === 'migrate') ? 'migrate' : 'restore';
 									if (!fileInput.files || !fileInput.files[0]) {
 										showNotification(_('Please select a JSON backup file.'), 'warning');
 										return;
@@ -536,16 +545,22 @@ return view.extend({
 									}
 									var reader = new FileReader();
 									reader.onload = function(e) {
-										callImportBackup(e.target.result).then(requireRpcResult).then(function(res) {
+										callImportBackup(e.target.result, mode).then(requireRpcResult).then(function(res) {
 											if (!res.restored || !res.nwid)
 												throw new Error(_('Controller did not return a network ID'));
-											showNotification(_('Network backup restored successfully.') + ' (' + res.nwid + ')', 'success');
+											var message = (res.mode === 'migrate') ?
+												_('Backup migrated to new network %s (from %s).').format(res.nwid, res.source_nwid || res.nwid) :
+												_('Network backup restored successfully.') + ' (' + res.nwid + ')';
+											showNotification(message, 'success');
 											window.setTimeout(function() { window.location.reload(); }, 700);
 										}).catch(handleRpcError);
 									};
 									reader.readAsText(fileInput.files[0]);
 								}
-							}, [ _('Import Backup') ])
+							}, [ _('Import Backup') ]),
+							E('p', { 'class': 'ztc-help' }, [
+								_('Restore keeps the original network ID and only works on the controller that created the backup. Migrate imports the backup as a new network under this controller.')
+							])
 						])
 					])
 				]),
@@ -829,7 +844,7 @@ return view.extend({
 								E('td', {}, [
 									E('span', { 'class': 'ztc-link-mode ztc-link-' + connection.mode }, [ modeLabel ])
 								]),
-								E('td', { 'class': 'ztc-latency-cell' }, [ latencyLabel ]),
+								E('td', { 'class': 'ztc-latency-cell', 'data-sort': String(connection.latency) }, [ latencyLabel ]),
 								E('td', {}, [
 									E('span', { 'class': 'ztc-auth-badge ' + (member.authorized ? 'ztc-auth-authorized' : 'ztc-auth-pending') }, [
 										member.authorized ? _('Authorized') : _('Pending')
@@ -1013,13 +1028,33 @@ return view.extend({
 		var tbody = document.getElementById('members-tbody');
 		if (!tbody)
 			return;
+
+		var dir = (this.sortColumn === colIdx && this.sortDirection !== -1) ? -1 : 1;
+		this.sortColumn = colIdx;
+		this.sortDirection = dir;
+
+		// Editable columns render <input> elements whose values are invisible
+		// to textContent; cells may also carry an explicit data-sort key.
+		function cellKey(row) {
+			var cell = row.children[colIdx];
+			if (!cell)
+				return '';
+			if (cell.hasAttribute('data-sort'))
+				return cell.getAttribute('data-sort');
+			var input = cell.querySelector('input');
+			return String(input ? input.value : cell.textContent).trim().toLowerCase();
+		}
+
+		var numericPattern = /^-?\d+(\.\d+)?$/;
 		var rows = Array.from(tbody.querySelectorAll('tr'));
 		rows.sort(function(a, b) {
-			var valA = a.children[colIdx] ? a.children[colIdx].textContent.trim().toLowerCase() : '';
-			var valB = b.children[colIdx] ? b.children[colIdx].textContent.trim().toLowerCase() : '';
-			return valA.localeCompare(valB);
+			var valA = cellKey(a);
+			var valB = cellKey(b);
+			var result = (numericPattern.test(valA) && numericPattern.test(valB)) ?
+				(parseFloat(valA) - parseFloat(valB)) :
+				valA.localeCompare(valB);
+			return dir * result;
 		});
-		tbody.innerHTML = '';
 		rows.forEach(function(row) { tbody.appendChild(row); });
 	}
 });

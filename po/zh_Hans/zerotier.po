@@ -443,3 +443,21 @@ msgstr "扫码加入"
 
 msgid "Scan with the ZeroTier app to join this network."
 msgstr "使用 ZeroTier App 扫码加入此网络。"
+
+msgid "Restore (overwrite, keep original network ID)"
+msgstr "恢复（覆盖，保留原网络 ID）"
+
+msgid "Migrate (new network ID on this controller)"
+msgstr "迁移（在本控制器生成新网络 ID）"
+
+msgid "Restore keeps the original network ID and only works on the controller that created the backup. Migrate imports the backup as a new network under this controller."
+msgstr "恢复模式保留原网络 ID，仅适用于生成该备份的控制器；迁移模式会将备份导入为本控制器上的新网络。"
+
+msgid "Backup migrated to new network %s (from %s)."
+msgstr "备份已迁移为新网络 %s（原网络 %s）。"
+
+msgid "Failed at member %s (%d of %d imported)."
+msgstr "成员 %s 导入失败（已导入 %d/%d）。"
+
+msgid "unknown error"
+msgstr "未知错误"

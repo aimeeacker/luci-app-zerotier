@@ -10,11 +10,15 @@ while [ "$#" -gt 0 ]; do
 		-o) body_file="$2"; shift 2 ;;
 		-w|-H) shift 2 ;;
 		-X) method="$2"; shift 2 ;;
-		-d) data="$2"; shift 2 ;;
+		-d|--data-binary) data="$2"; shift 2 ;;
 		http://*) url="$1"; shift ;;
 		*) shift ;;
 	esac
 done
+
+case "$data" in
+	@*) data="$(cat "${data#@}")" ;;
+esac
 
 [ -n "${ZT_TEST_REQUEST_LOG:-}" ] && printf '%s %s\n' "$method" "$url" >> "$ZT_TEST_REQUEST_LOG"
 
@@ -63,7 +67,11 @@ case "$method $url" in
 			body="$data"
 		fi
 		;;
-	"POST http://127.0.0.1:9993/controller/network/8056c2e21c000001/member/"*)
+	"POST http://127.0.0.1:9993/controller/network/8056c2e21c______")
+		printf '%s' "$data" > "$ZT_TEST_PAYLOAD"
+		body='{"id":"8056c2e21c000002"}'
+		;;
+	"POST http://127.0.0.1:9993/controller/network/"*"/member/"*)
 		member_id="${url##*/}"
 		if [ "${ZT_TEST_FAIL_MEMBER:-}" = "$member_id" ]; then
 			body='{"error":"mock member restore failed"}'
