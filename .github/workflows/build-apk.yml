@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select SDK source
         env:
@@ -126,7 +126,7 @@ jobs:
 
       - name: Cache SDK archive
         id: cache-sdk
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sdk.tar.zst
           key: sdk-tarball-${{ env.SDK_SHA256 }}
@@ -265,7 +265,7 @@ jobs:
           grep -E '^CONFIG_PACKAGE_.*=[ym]$' .config
 
       - name: Cache SDK build state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             sdk/build_dir
@@ -328,7 +328,7 @@ jobs:
           ls -lh output
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: immortalwrt-25.12-x86_64-luci-zerotier
           path: output/*
@@ -336,7 +336,7 @@ jobs:
 
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: output/*
         env:
