@@ -75,23 +75,85 @@ jobs:
           msgfmt --check --check-format -o /dev/null po/zh_Hans/zerotier.po
           tests/test-rpcd-ip-pool.sh
 
-      - name: Download and verify ImmortalWrt SDK
+      - name: Resolve SDK release metadata
         run: |
-          sdk_index="$(curl -fsSL --retry 3 "$SDK_BASE_URL/")"
-          sdk_filename="$(printf '%s' "$sdk_index" | grep -oE 'immortalwrt-sdk-(25\.12-SNAPSHOT-)?x86-64[^"<]*\.tar\.zst' | sed -n '1p')"
-          if [ -z "$sdk_filename" ]; then
-            echo "No x86_64 ImmortalWrt SDK found at $SDK_BASE_URL" >&2
+          # The primary download server occasionally throttles to a few hundred
+          # KB/s; keep a list of mirrors that carry the same release tree and
+          # resolve filename + checksum from whichever source answers first.
+          {
+            printf '%s\n' "$SDK_BASE_URL"
+            case "$SDK_BASE_URL" in
+              https://downloads.immortalwrt.org/*)
+                suffix="${SDK_BASE_URL#https://downloads.immortalwrt.org/}"
+                printf '%s\n' \
+                  "https://mirror.nju.edu.cn/immortalwrt/$suffix" \
+                  "https://mirrors.sjtug.sjtu.edu.cn/immortalwrt/$suffix" \
+                  "https://mirrors.pku.edu.cn/immortalwrt/$suffix"
+                ;;
+            esac
+          } > sdk-mirrors.txt
+
+          sdk_resolved_base=""
+          while IFS= read -r base; do
+            echo "Trying SDK source: $base"
+            if curl -fsSL --retry 2 --max-time 90 "$base/sha256sums" -o sdk.sha256sums; then
+              sdk_resolved_base="$base"
+              break
+            fi
+          done < sdk-mirrors.txt
+          if [ -z "$sdk_resolved_base" ]; then
+            echo "Unable to fetch sha256sums from any SDK source" >&2
             exit 1
           fi
 
-          curl -fL --retry 3 "$SDK_BASE_URL/$sdk_filename" -o sdk.tar.zst
-          expected_sha256="$(curl -fsSL --retry 3 "$SDK_BASE_URL/sha256sums" | awk -v file="$sdk_filename" '$2 == file || $2 == "*" file { print $1 }')"
+          sdk_filename="$(grep -oE 'immortalwrt-sdk-[^ *]*x86-64[^ *]*\.tar\.zst' sdk.sha256sums | sed -n '1p')"
+          if [ -z "$sdk_filename" ]; then
+            echo "No x86_64 ImmortalWrt SDK listed in sha256sums from $sdk_resolved_base" >&2
+            exit 1
+          fi
+          expected_sha256="$(awk -v file="$sdk_filename" '$2 == file || $2 == "*" file { print $1 }' sdk.sha256sums)"
           if [ -z "$expected_sha256" ]; then
             echo "SDK checksum not found for $sdk_filename" >&2
             exit 1
           fi
-          echo "$expected_sha256  sdk.tar.zst" | sha256sum -c -
 
+          echo "Resolved $sdk_filename ($expected_sha256) via $sdk_resolved_base"
+          {
+            echo "SDK_RESOLVED_BASE=$sdk_resolved_base"
+            echo "SDK_FILENAME=$sdk_filename"
+            echo "SDK_SHA256=$expected_sha256"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache SDK archive
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: sdk.tar.zst
+          key: sdk-tarball-${{ env.SDK_SHA256 }}
+
+      - name: Download ImmortalWrt SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          # Abort any source that stays under 1 MB/s for a minute and move on
+          # to the next mirror instead of crawling for half an hour.
+          downloaded=""
+          for base in "$SDK_RESOLVED_BASE" $(grep -Fxv "$SDK_RESOLVED_BASE" sdk-mirrors.txt || true); do
+            echo "Downloading SDK from $base"
+            rm -f sdk.tar.zst
+            if curl -fL --retry 1 --speed-limit 1048576 --speed-time 60 "$base/$SDK_FILENAME" -o sdk.tar.zst &&
+               echo "$SDK_SHA256  sdk.tar.zst" | sha256sum -c -; then
+              downloaded=1
+              break
+            fi
+          done
+          if [ -z "$downloaded" ]; then
+            echo "SDK download failed from all sources" >&2
+            exit 1
+          fi
+
+      - name: Verify and extract SDK
+        run: |
+          echo "$SDK_SHA256  sdk.tar.zst" | sha256sum -c -
           tar --zstd -xf sdk.tar.zst
           sdk_dir="$(find . -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
           if [ -z "$sdk_dir" ]; then
@@ -99,7 +161,6 @@ jobs:
             exit 1
           fi
           mv "$sdk_dir" sdk
-          echo "SDK_FILENAME=$sdk_filename" >> "$GITHUB_ENV"
 
       - name: Install LuCI build feeds
         working-directory: sdk
@@ -142,6 +203,7 @@ jobs:
             '# CONFIG_ALL_KMODS is not set' \
             '# CONFIG_ALL_NONSHARED is not set' \
             '# CONFIG_AUTOREMOVE is not set' \
+            '# CONFIG_AUTOREBUILD is not set' \
             'CONFIG_PACKAGE_luci-app-zerotier=m' \
             'CONFIG_PACKAGE_luci-i18n-zerotier-zh-cn=m' > .config
           make defconfig
@@ -152,6 +214,13 @@ jobs:
           fi
           if grep -q '^CONFIG_AUTOREMOVE=y$' .config; then
             echo "SDK build directory cleanup is still enabled" >&2
+            exit 1
+          fi
+          # With AUTOREBUILD disabled the restored dependency build state is
+          # trusted as-is; luci-app-zerotier itself is still rebuilt every run
+          # via the explicit package clean in the build step.
+          if grep -q '^CONFIG_AUTOREBUILD=y$' .config; then
+            echo "SDK timestamp-based rebuild tracking is still enabled" >&2
             exit 1
           fi
 
@@ -170,6 +239,14 @@ jobs:
             exit 1
           fi
           grep -E '^CONFIG_PACKAGE_.*=[ym]$' .config
+
+      - name: Cache SDK build state
+        uses: actions/cache@v4
+        with:
+          path: |
+            sdk/build_dir
+            sdk/staging_dir
+          key: sdk-build-v1-${{ env.SDK_SHA256 }}
 
       - name: Build LuCI application and Simplified Chinese translation
         working-directory: sdk
@@ -212,9 +289,10 @@ jobs:
           printf '%s\n' \
             "SDK: $SDK_FILENAME" \
             "SDK source: $SDK_BASE_URL" \
+            "SDK download source: $SDK_RESOLVED_BASE" \
             "Target: ImmortalWrt 25.12 x86/64" \
             "Build scope: LuCI application and Simplified Chinese translation only" \
-            "ZeroTier daemon/Controller binary: not rebuilt" \
+            "ZeroTier daemon/Controller binary: compiled as SDK dependency, not shipped" \
             "Packages: luci-app-zerotier, luci-i18n-zerotier-zh-cn" > output/BUILD-INFO.txt
 
           (
